@@ -97,7 +97,7 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to create kubernetes client: %w", err)
 		}
-		a = analyzer.NewAnalyzer(client.GetClientset())
+		a = analyzer.NewAnalyzer(client.GetRBACReader())
 	} else {
 		// Analyze files
 		var objects []runtime.Object
@@ -221,7 +221,7 @@ func outputHumanReadable(permissions []analyzer.SubjectPermissions, showRoles bo
 	// Print detailed analysis for each subject
 	for i, subjectPerm := range permissions {
 		if i > 0 {
-			fmt.Printf("\n" + strings.Repeat("─", 80) + "\n\n")
+			fmt.Printf("\n%s\n\n", strings.Repeat("─", 80))
 		}
 
 		printSubjectAnalysis(subjectPerm, showRoles)

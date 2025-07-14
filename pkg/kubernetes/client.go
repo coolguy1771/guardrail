@@ -9,10 +9,44 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
+	rbacv1client "k8s.io/client-go/kubernetes/typed/rbac/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
 )
+
+// RBACReader provides read-only access to RBAC resources
+type RBACReader interface {
+	// Roles returns a read-only interface for roles
+	Roles(namespace string) rbacv1client.RoleInterface
+	// RoleBindings returns a read-only interface for role bindings
+	RoleBindings(namespace string) rbacv1client.RoleBindingInterface
+	// ClusterRoles returns a read-only interface for cluster roles
+	ClusterRoles() rbacv1client.ClusterRoleInterface
+	// ClusterRoleBindings returns a read-only interface for cluster role bindings
+	ClusterRoleBindings() rbacv1client.ClusterRoleBindingInterface
+}
+
+// rbacReaderImpl implements the RBACReader interface
+type rbacReaderImpl struct {
+	rbacClient rbacv1client.RbacV1Interface
+}
+
+func (r *rbacReaderImpl) Roles(namespace string) rbacv1client.RoleInterface {
+	return r.rbacClient.Roles(namespace)
+}
+
+func (r *rbacReaderImpl) RoleBindings(namespace string) rbacv1client.RoleBindingInterface {
+	return r.rbacClient.RoleBindings(namespace)
+}
+
+func (r *rbacReaderImpl) ClusterRoles() rbacv1client.ClusterRoleInterface {
+	return r.rbacClient.ClusterRoles()
+}
+
+func (r *rbacReaderImpl) ClusterRoleBindings() rbacv1client.ClusterRoleBindingInterface {
+	return r.rbacClient.ClusterRoleBindings()
+}
 
 // Client provides methods to fetch RBAC resources from a Kubernetes cluster
 type Client struct {
@@ -48,9 +82,11 @@ func NewClientFromConfig(config *rest.Config) (*Client, error) {
 	}, nil
 }
 
-// GetClientset returns the underlying Kubernetes clientset
-func (c *Client) GetClientset() kubernetes.Interface {
-	return c.clientset
+// GetRBACReader returns a read-only interface for RBAC operations
+func (c *Client) GetRBACReader() RBACReader {
+	return &rbacReaderImpl{
+		rbacClient: c.clientset.RbacV1(),
+	}
 }
 
 // getConfig returns a kubernetes config

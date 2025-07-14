@@ -9,19 +9,19 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/kubernetes"
+	"github.com/coolguy1771/guardrail/pkg/kubernetes"
 )
 
 // Analyzer provides RBAC analysis capabilities
 type Analyzer struct {
-	clientset kubernetes.Interface
-	objects   []runtime.Object
+	rbacReader kubernetes.RBACReader
+	objects    []runtime.Object
 }
 
 // NewAnalyzer creates a new analyzer instance
-func NewAnalyzer(clientset kubernetes.Interface) *Analyzer {
+func NewAnalyzer(rbacReader kubernetes.RBACReader) *Analyzer {
 	return &Analyzer{
-		clientset: clientset,
+		rbacReader: rbacReader,
 	}
 }
 
@@ -153,7 +153,7 @@ func (a *Analyzer) fetchFromCluster(ctx context.Context) ([]runtime.Object, []ru
 	var bindings, roles []runtime.Object
 
 	// Fetch RoleBindings
-	roleBindings, err := a.clientset.RbacV1().RoleBindings("").List(ctx, metav1.ListOptions{})
+	roleBindings, err := a.rbacReader.RoleBindings("").List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to fetch role bindings: %w", err)
 	}
@@ -162,7 +162,7 @@ func (a *Analyzer) fetchFromCluster(ctx context.Context) ([]runtime.Object, []ru
 	}
 
 	// Fetch ClusterRoleBindings
-	clusterRoleBindings, err := a.clientset.RbacV1().ClusterRoleBindings().List(ctx, metav1.ListOptions{})
+	clusterRoleBindings, err := a.rbacReader.ClusterRoleBindings().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to fetch cluster role bindings: %w", err)
 	}
@@ -171,7 +171,7 @@ func (a *Analyzer) fetchFromCluster(ctx context.Context) ([]runtime.Object, []ru
 	}
 
 	// Fetch Roles
-	roleList, err := a.clientset.RbacV1().Roles("").List(ctx, metav1.ListOptions{})
+	roleList, err := a.rbacReader.Roles("").List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to fetch roles: %w", err)
 	}
@@ -180,7 +180,7 @@ func (a *Analyzer) fetchFromCluster(ctx context.Context) ([]runtime.Object, []ru
 	}
 
 	// Fetch ClusterRoles
-	clusterRoleList, err := a.clientset.RbacV1().ClusterRoles().List(ctx, metav1.ListOptions{})
+	clusterRoleList, err := a.rbacReader.ClusterRoles().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to fetch cluster roles: %w", err)
 	}
@@ -532,20 +532,37 @@ func (a *Analyzer) explainVerbs(verbs []string, resources []string) []VerbExplan
 // isSensitiveResource checks if resources are considered sensitive
 func (a *Analyzer) isSensitiveResource(resources []string) bool {
 	sensitiveResources := map[string]bool{
-		"*":                    true,
-		"secrets":              true,
-		"serviceaccounts":      true,
-		"roles":                true,
-		"rolebindings":         true,
-		"clusterroles":         true,
-		"clusterrolebindings":  true,
-		"nodes":                true,
-		"persistentvolumes":    true,
-		"podsecuritypolicies":  true,
-		"networkpolicies":      true,
-		"pods/exec":            true,
-		"pods/portforward":     true,
-		"pods/proxy":           true,
+		"*":                           true,
+		"secrets":                     true,
+		"serviceaccounts":             true,
+		"roles":                       true,
+		"rolebindings":                true,
+		"clusterroles":                true,
+		"clusterrolebindings":         true,
+		"nodes":                       true,
+		"persistentvolumes":           true,
+		"podsecuritypolicies":         true,
+		"networkpolicies":             true,
+		"pods/exec":                   true,
+		"pods/portforward":            true,
+		"pods/proxy":                  true,
+		"configmaps":                  true,
+		"certificatesigningrequests":  true,
+		"validatingwebhookconfigurations": true,
+		"mutatingwebhookconfigurations":   true,
+		"customresourcedefinitions":   true,
+		"apiservices":                 true,
+		"tokenreviews":                true,
+		"subjectaccessreviews":        true,
+		"selfsubjectaccessreviews":    true,
+		"nodes/proxy":                 true,
+		"services/proxy":              true,
+		"namespaces":                  true,
+		"events":                      true,
+		"pods/attach":                 true,
+		"pods/log":                    true,
+		"priorityclasses":             true,
+		"storageclasses":              true,
 	}
 	
 	for _, resource := range resources {
