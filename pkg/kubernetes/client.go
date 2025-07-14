@@ -48,6 +48,11 @@ func NewClientFromConfig(config *rest.Config) (*Client, error) {
 	}, nil
 }
 
+// GetClientset returns the underlying Kubernetes clientset
+func (c *Client) GetClientset() kubernetes.Interface {
+	return c.clientset
+}
+
 // getConfig returns a kubernetes config
 func getConfig(kubeconfig string) (*rest.Config, error) {
 	// If running in-cluster
