@@ -11,8 +11,7 @@
     ":prImmediately",
     ":updateNotScheduled",
     ":automergeDisabled",
-    ":ignoreModulesAndTests",
-    ":autodetectPinVersions"
+    ":ignoreModulesAndTests"
   ],
   "timezone": "America/New_York",
   "schedule": [
@@ -33,59 +32,90 @@
   ],
   "packageRules": [
     {
+      "matchCategories": [
+        "golang"
+      ],
+      "minimumReleaseAge": "3 days",
+      "postUpdateOptions": [
+        "gomodTidy",
+        "gomodUpdateImportPaths"
+      ]
+    },
+    {
+      "matchCategories": [
+        "docker"
+      ],
+      "minimumReleaseAge": "3 days",
+      "pinDigests": true
+    },
+    {
       "description": "Group Go module updates",
-      "matchManagers": ["gomod"],
+      "matchManagers": [
+        "gomod"
+      ],
       "groupName": "Go modules",
       "commitMessageTopic": "Go modules"
     },
     {
       "description": "Group Kubernetes dependencies",
-      "matchPackagePatterns": [
-        "k8s.io/*",
-        "sigs.k8s.io/*"
-      ],
       "groupName": "Kubernetes dependencies",
       "commitMessageTopic": "Kubernetes dependencies",
       "schedule": [
         "before 4am on monday"
+      ],
+      "matchPackageNames": [
+        "/k8s.io/*/",
+        "/sigs.k8s.io/*/"
       ]
     },
     {
       "description": "Group GitHub Actions updates",
-      "matchManagers": ["github-actions"],
+      "matchManagers": [
+        "github-actions"
+      ],
       "groupName": "GitHub Actions",
       "commitMessageTopic": "GitHub Actions",
       "pinDigests": true
     },
     {
       "description": "Group Docker updates",
-      "matchManagers": ["dockerfile"],
+      "matchManagers": [
+        "dockerfile"
+      ],
       "groupName": "Docker",
       "commitMessageTopic": "Docker"
     },
     {
       "description": "Auto-merge patch updates for trusted packages",
-      "matchUpdateTypes": ["patch"],
-      "matchPackagePatterns": [
-        "golang.org/*",
-        "github.com/spf13/*",
-        "gopkg.in/yaml.*"
+      "matchUpdateTypes": [
+        "patch"
+      ],
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": true,
+      "matchPackageNames": [
+        "/golang.org/*/",
+        "/github.com/spf13/*/",
+        "/gopkg.in/yaml.*/"
+      ]
+    },
+    {
+      "description": "Auto-merge GitHub Actions patch updates",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchUpdateTypes": [
+        "patch"
       ],
       "automerge": true,
       "automergeType": "pr",
       "platformAutomerge": true
     },
     {
-      "description": "Auto-merge GitHub Actions patch updates",
-      "matchManagers": ["github-actions"],
-      "matchUpdateTypes": ["patch"],
-      "automerge": true,
-      "automergeType": "pr",
-      "platformAutomerge": true
-    },
-    {
       "description": "Separate major updates",
-      "matchUpdateTypes": ["major"],
+      "matchUpdateTypes": [
+        "major"
+      ],
       "labels": [
         "dependencies",
         "major-update"
@@ -96,7 +126,6 @@
     },
     {
       "description": "Security updates",
-      "matchPackagePatterns": ["*"],
       "vulnerabilityAlerts": {
         "labels": [
           "dependencies",
@@ -105,11 +134,14 @@
         "prPriority": 20,
         "commitMessagePrefix": "fix(security):",
         "prTitle": "fix(security): update {{depName}} to {{newVersion}}"
-      }
+      },
+      "matchPackageNames": [
+        "*"
+      ]
     },
     {
       "description": "Pin Go version in workflows",
-      "matchFiles": [
+      "matchFileNames": [
         ".github/workflows/**"
       ],
       "matchStrings": [
@@ -120,17 +152,6 @@
       "extractVersionTemplate": "^go(?<version>.*)$"
     }
   ],
-  "golang": {
-    "minimumReleaseAge": "3 days",
-    "postUpdateOptions": [
-      "gomodTidy",
-      "gomodUpdateImportPaths"
-    ]
-  },
-  "docker": {
-    "minimumReleaseAge": "3 days",
-    "pinDigests": true
-  },
   "github-actions": {
     "pinDigests": true
   },
@@ -158,8 +179,8 @@
     {
       "customType": "regex",
       "description": "Update Go version in Makefile",
-      "fileMatch": [
-        "^Makefile$"
+      "managerFilePatterns": [
+        "/^Makefile$/"
       ],
       "matchStrings": [
         "GO_VERSION\\s*:?=\\s*(?<currentValue>.*?)\\s"
@@ -171,8 +192,8 @@
     {
       "customType": "regex",
       "description": "Update Go version in Dockerfile",
-      "fileMatch": [
-        "^Dockerfile$"
+      "managerFilePatterns": [
+        "/^Dockerfile$/"
       ],
       "matchStrings": [
         "FROM golang:(?<currentValue>.*?)-"
@@ -183,8 +204,8 @@
     {
       "customType": "regex",
       "description": "Update Go version in .goreleaser.yml",
-      "fileMatch": [
-        "^\\.goreleaser\\.ya?ml$"
+      "managerFilePatterns": [
+        "/^\\.goreleaser\\.ya?ml$/"
       ],
       "matchStrings": [
         "FROM golang:(?<currentValue>.*?)-"
