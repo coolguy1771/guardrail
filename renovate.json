@@ -1,0 +1,204 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:best-practices",
+    "security:openssf-scorecard",
+    ":dependencyDashboard",
+    ":semanticCommits",
+    ":separateMajorReleases",
+    ":combinePatchMinorReleases",
+    ":ignoreUnstable",
+    ":prImmediately",
+    ":updateNotScheduled",
+    ":automergeDisabled",
+    ":ignoreModulesAndTests",
+    ":autodetectPinVersions"
+  ],
+  "timezone": "America/New_York",
+  "schedule": [
+    "before 4am on monday"
+  ],
+  "labels": [
+    "dependencies"
+  ],
+  "commitMessagePrefix": "chore(deps):",
+  "commitMessageTopic": "{{depName}}",
+  "commitMessageExtra": "to {{newVersion}}",
+  "prTitle": "chore(deps): update {{depName}} to {{newVersion}}",
+  "assignees": [
+    "coolguy1771"
+  ],
+  "reviewers": [
+    "coolguy1771"
+  ],
+  "packageRules": [
+    {
+      "description": "Group Go module updates",
+      "matchManagers": ["gomod"],
+      "groupName": "Go modules",
+      "commitMessageTopic": "Go modules"
+    },
+    {
+      "description": "Group Kubernetes dependencies",
+      "matchPackagePatterns": [
+        "k8s.io/*",
+        "sigs.k8s.io/*"
+      ],
+      "groupName": "Kubernetes dependencies",
+      "commitMessageTopic": "Kubernetes dependencies",
+      "schedule": [
+        "before 4am on monday"
+      ]
+    },
+    {
+      "description": "Group GitHub Actions updates",
+      "matchManagers": ["github-actions"],
+      "groupName": "GitHub Actions",
+      "commitMessageTopic": "GitHub Actions",
+      "pinDigests": true
+    },
+    {
+      "description": "Group Docker updates",
+      "matchManagers": ["dockerfile"],
+      "groupName": "Docker",
+      "commitMessageTopic": "Docker"
+    },
+    {
+      "description": "Auto-merge patch updates for trusted packages",
+      "matchUpdateTypes": ["patch"],
+      "matchPackagePatterns": [
+        "golang.org/*",
+        "github.com/spf13/*",
+        "gopkg.in/yaml.*"
+      ],
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": true
+    },
+    {
+      "description": "Auto-merge GitHub Actions patch updates",
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["patch"],
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": true
+    },
+    {
+      "description": "Separate major updates",
+      "matchUpdateTypes": ["major"],
+      "labels": [
+        "dependencies",
+        "major-update"
+      ],
+      "prPriority": 10,
+      "commitMessagePrefix": "chore(deps)!:",
+      "prTitle": "chore(deps)!: update {{depName}} to {{newVersion}} (major)"
+    },
+    {
+      "description": "Security updates",
+      "matchPackagePatterns": ["*"],
+      "vulnerabilityAlerts": {
+        "labels": [
+          "dependencies",
+          "security"
+        ],
+        "prPriority": 20,
+        "commitMessagePrefix": "fix(security):",
+        "prTitle": "fix(security): update {{depName}} to {{newVersion}}"
+      }
+    },
+    {
+      "description": "Pin Go version in workflows",
+      "matchFiles": [
+        ".github/workflows/**"
+      ],
+      "matchStrings": [
+        "go-version: ['\"]?(?<currentValue>.*?)['\"]?"
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "golang/go",
+      "extractVersionTemplate": "^go(?<version>.*)$"
+    }
+  ],
+  "golang": {
+    "minimumReleaseAge": "3 days",
+    "postUpdateOptions": [
+      "gomodTidy",
+      "gomodUpdateImportPaths"
+    ]
+  },
+  "docker": {
+    "minimumReleaseAge": "3 days",
+    "pinDigests": true
+  },
+  "github-actions": {
+    "pinDigests": true
+  },
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 2,
+  "separateMinorPatch": true,
+  "separateMajorMinor": true,
+  "separateMultipleMajor": true,
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": [
+      "before 4am on monday"
+    ],
+    "commitMessageAction": "Lock file maintenance",
+    "prTitle": "chore(deps): lock file maintenance"
+  },
+  "osvVulnerabilityAlerts": true,
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": [
+      "security"
+    ]
+  },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Update Go version in Makefile",
+      "fileMatch": [
+        "^Makefile$"
+      ],
+      "matchStrings": [
+        "GO_VERSION\\s*:?=\\s*(?<currentValue>.*?)\\s"
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "golang/go",
+      "extractVersionTemplate": "^go(?<version>.*)$"
+    },
+    {
+      "customType": "regex",
+      "description": "Update Go version in Dockerfile",
+      "fileMatch": [
+        "^Dockerfile$"
+      ],
+      "matchStrings": [
+        "FROM golang:(?<currentValue>.*?)-"
+      ],
+      "datasourceTemplate": "docker",
+      "depNameTemplate": "golang"
+    },
+    {
+      "customType": "regex",
+      "description": "Update Go version in .goreleaser.yml",
+      "fileMatch": [
+        "^\\.goreleaser\\.ya?ml$"
+      ],
+      "matchStrings": [
+        "FROM golang:(?<currentValue>.*?)-"
+      ],
+      "datasourceTemplate": "docker",
+      "depNameTemplate": "golang"
+    }
+  ],
+  "ignorePaths": [
+    "**/testdata/**",
+    "**/vendor/**",
+    "**/examples/**"
+  ],
+  "ignoreDeps": [
+    "go"
+  ]
+}

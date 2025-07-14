@@ -1,0 +1,164 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+    - go generate ./...
+
+builds:
+  - id: guardrail
+    main: ./cmd/guardrail
+    binary: guardrail
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+      - arm
+    goarm:
+      - "7"
+    ignore:
+      - goos: windows
+        goarch: arm64
+      - goos: windows
+        goarch: arm
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+
+archives:
+  - id: guardrail
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - README.md
+      - LICENSE
+      - configs/*
+      - testdata/*
+
+checksum:
+  name_template: 'checksums.txt'
+
+snapshot:
+  name_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - Merge pull request
+      - Merge branch
+  groups:
+    - title: Features
+      regexp: "^.*feat[(\\w)]*:+.*$"
+      order: 0
+    - title: Bug Fixes
+      regexp: "^.*fix[(\\w)]*:+.*$"
+      order: 1
+    - title: Improvements
+      regexp: "^.*perf[(\\w)]*:+.*$"
+      order: 2
+    - title: Others
+      order: 999
+
+brews:
+  - repository:
+      owner: coolguy1771
+      name: homebrew-tap
+    name: guardrail
+    homepage: "https://github.com/coolguy1771/guardrail"
+    description: "Kubernetes RBAC validation tool"
+    license: "MIT"
+    test: |
+      system "#{bin}/guardrail", "--version"
+    dependencies:
+      - name: kubectl
+        type: optional
+
+dockers:
+  - image_templates:
+      - "ghcr.io/coolguy1771/guardrail:{{ .Tag }}-amd64"
+      - "ghcr.io/coolguy1771/guardrail:latest-amd64"
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+    dockerfile: Dockerfile
+    extra_files:
+      - configs/
+
+  - image_templates:
+      - "ghcr.io/coolguy1771/guardrail:{{ .Tag }}-arm64"
+      - "ghcr.io/coolguy1771/guardrail:latest-arm64"
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+    dockerfile: Dockerfile
+    extra_files:
+      - configs/
+
+docker_manifests:
+  - name_template: "ghcr.io/coolguy1771/guardrail:{{ .Tag }}"
+    image_templates:
+      - "ghcr.io/coolguy1771/guardrail:{{ .Tag }}-amd64"
+      - "ghcr.io/coolguy1771/guardrail:{{ .Tag }}-arm64"
+
+  - name_template: "ghcr.io/coolguy1771/guardrail:latest"
+    image_templates:
+      - "ghcr.io/coolguy1771/guardrail:latest-amd64"
+      - "ghcr.io/coolguy1771/guardrail:latest-arm64"
+
+release:
+  github:
+    owner: coolguy1771
+    name: guardrail
+  draft: false
+  prerelease: auto
+  mode: append
+  header: |
+    ## What's Changed
+  footer: |
+    **Full Changelog**: https://github.com/coolguy1771/guardrail/compare/{{ .PreviousTag }}...{{ .Tag }}
+
+nfpms:
+  - id: guardrail
+    package_name: guardrail
+    file_name_template: "{{ .ConventionalFileName }}"
+    homepage: https://github.com/coolguy1771/guardrail
+    description: Kubernetes RBAC validation tool
+    maintainer: coolguy1771
+    license: MIT
+    vendor: guardrail
+    formats:
+      - deb
+      - rpm
+      - apk
+    contents:
+      - src: ./configs/
+        dst: /etc/guardrail/
+        type: config
+      - src: ./README.md
+        dst: /usr/share/doc/guardrail/README.md
+      - src: ./LICENSE
+        dst: /usr/share/doc/guardrail/LICENSE

@@ -1,0 +1,56 @@
+# Add 'repo' label to any root file changes
+repo:
+  - .gitignore
+  - .goreleaser.yml
+  - Dockerfile
+  - LICENSE
+  - README.md
+  - Makefile
+
+# Add 'documentation' label to any documentation changes
+documentation:
+  - docs/**/*
+  - "*.md"
+
+# Add 'github' label to changes in GitHub templates
+github:
+  - .github/**/*
+
+# Add 'go' label to changes in Go files
+go:
+  - "**/*.go"
+  - go.mod
+  - go.sum
+
+# Add 'deps' label to dependency changes
+deps:
+  - go.mod
+  - go.sum
+  - renovate.json
+
+# Add 'renovate' label to renovate config changes
+renovate:
+  - renovate.json
+  - .github/workflows/renovate.yml
+
+# Add 'config' label to configuration changes
+config:
+  - configs/**/*
+  - "**/*.yaml"
+  - "**/*.yml"
+
+# Add 'test' label to test changes
+test:
+  - "**/*_test.go"
+  - testdata/**/*
+
+# Add 'ci' label to CI/CD changes
+ci:
+  - .github/workflows/**/*
+  - .goreleaser.yml
+  - Dockerfile
+
+# Add 'security' label to security-related changes
+security:
+  - .github/workflows/security.yml
+  - pkg/validator/**/*
