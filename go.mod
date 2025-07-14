@@ -1,6 +1,7 @@
 module github.com/coolguy1771/guardrail
 
-go 1.24.5
+-go 1.24.5
++go 1.24
 
 require (
 	github.com/spf13/cobra v1.9.1
