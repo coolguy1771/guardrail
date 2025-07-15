@@ -25,7 +25,24 @@ formatters:
       # Default: []
       local-prefixes:
         - github.com/coolguy1771/guardrail
-
+    gofumpt:
+      # Module path which contains the source code being formatted.
+      # Default: ""
+      module-path: github.com/coolguy1771/wastebin
+    gci:
+        # Section configuration to compare against.
+        # Section names are case-insensitive and may contain parameters in ().
+        # The default order of sections is `standard > default > custom > blank > dot > alias > localmodule`.
+        # If `custom-order` is `true`, it follows the order of `sections` option.
+        # Default: ["standard", "default"]
+        sections:
+          - standard                       # Standard section: captures all standard packages.
+          - default                        # Default section: contains all imports that could not be matched to another section type.
+          - prefix(github.com/coolguy1771/wastebin) # Custom section: groups all imports with the specified Prefix.
+          - blank                          # Blank section: contains all blank imports. This section is not present unless explicitly enabled.
+          - dot                            # Dot section: contains all dot imports. This section is not present unless explicitly enabled.
+          - alias                          # Alias section: contains all alias imports. This section is not present unless explicitly enabled.
+          - localmodule                    # Local module section: contains all local packages. This section is not present unless explicitly enabled.
     golines:
       # Target maximum line length.
       # Default: 100

@@ -3,16 +3,17 @@ package validator
 import (
 	"fmt"
 
-	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+
+	rbacv1 "k8s.io/api/rbac/v1"
 )
 
-// Validator validates RBAC resources against security policies
+// Validator validates RBAC resources against security policies.
 type Validator struct {
 	rules []Rule
 }
 
-// Rule represents a validation rule
+// Rule represents a validation rule.
 type Rule struct {
 	ID          string
 	Name        string
@@ -21,7 +22,7 @@ type Rule struct {
 	Validate    func(obj runtime.Object) []Finding
 }
 
-// Severity represents the severity of a finding
+// Severity represents the severity of a finding.
 type Severity string
 
 const (
@@ -31,7 +32,7 @@ const (
 	SeverityInfo   Severity = "INFO"
 )
 
-// Finding represents a validation finding
+// Finding represents a validation finding.
 type Finding struct {
 	RuleID      string
 	RuleName    string
@@ -43,45 +44,45 @@ type Finding struct {
 	Remediation string
 }
 
-// New creates a new Validator with default rules
+// New creates a new Validator with default rules.
 func New() *Validator {
 	return &Validator{
 		rules: defaultRules(),
 	}
 }
 
-// NewWithRules creates a new Validator with custom rules
+// NewWithRules creates a new Validator with custom rules.
 func NewWithRules(rules []Rule) *Validator {
 	return &Validator{
 		rules: rules,
 	}
 }
 
-// Validate validates a Kubernetes object
+// Validate validates a Kubernetes object.
 func (v *Validator) Validate(obj runtime.Object) []Finding {
 	var findings []Finding
-	
+
 	for _, rule := range v.rules {
 		ruleFindings := rule.Validate(obj)
 		findings = append(findings, ruleFindings...)
 	}
-	
+
 	return findings
 }
 
-// ValidateAll validates multiple Kubernetes objects
+// ValidateAll validates multiple Kubernetes objects.
 func (v *Validator) ValidateAll(objects []runtime.Object) []Finding {
 	var allFindings []Finding
-	
+
 	for _, obj := range objects {
 		findings := v.Validate(obj)
 		allFindings = append(allFindings, findings...)
 	}
-	
+
 	return allFindings
 }
 
-// defaultRules returns the default set of validation rules
+// defaultRules returns the default set of validation rules.
 func defaultRules() []Rule {
 	return []Rule{
 		{
@@ -115,24 +116,24 @@ func defaultRules() []Rule {
 	}
 }
 
-// validateWildcardPermissions checks for wildcard usage in permissions
+// validateWildcardPermissions checks for wildcard usage in permissions.
 func validateWildcardPermissions(obj runtime.Object) []Finding {
 	var findings []Finding
-	
+
 	switch v := obj.(type) {
 	case *rbacv1.Role:
 		findings = checkRulesForWildcards(v.Rules, v.Name, v.Namespace, "Role")
 	case *rbacv1.ClusterRole:
 		findings = checkRulesForWildcards(v.Rules, v.Name, "", "ClusterRole")
 	}
-	
+
 	return findings
 }
 
-// checkRulesForWildcards checks PolicyRules for wildcard usage
+// checkRulesForWildcards checks PolicyRules for wildcard usage.
 func checkRulesForWildcards(rules []rbacv1.PolicyRule, name, namespace, kind string) []Finding {
 	var findings []Finding
-	
+
 	for _, rule := range rules {
 		// Check for wildcard in verbs
 		for _, verb := range rule.Verbs {
@@ -149,7 +150,7 @@ func checkRulesForWildcards(rules []rbacv1.PolicyRule, name, namespace, kind str
 				})
 			}
 		}
-		
+
 		// Check for wildcard in resources
 		for _, resource := range rule.Resources {
 			if resource == "*" {
@@ -165,7 +166,7 @@ func checkRulesForWildcards(rules []rbacv1.PolicyRule, name, namespace, kind str
 				})
 			}
 		}
-		
+
 		// Check for wildcard in API groups
 		for _, apiGroup := range rule.APIGroups {
 			if apiGroup == "*" {
@@ -182,14 +183,14 @@ func checkRulesForWildcards(rules []rbacv1.PolicyRule, name, namespace, kind str
 			}
 		}
 	}
-	
+
 	return findings
 }
 
-// validateClusterAdminBinding checks for bindings to cluster-admin role
+// validateClusterAdminBinding checks for bindings to cluster-admin role.
 func validateClusterAdminBinding(obj runtime.Object) []Finding {
 	var findings []Finding
-	
+
 	switch v := obj.(type) {
 	case *rbacv1.ClusterRoleBinding:
 		if v.RoleRef.Name == "cluster-admin" {
@@ -218,21 +219,23 @@ func validateClusterAdminBinding(obj runtime.Object) []Finding {
 			})
 		}
 	}
-	
+
 	return findings
 }
 
-// validateSecretsAccess checks for direct access to secrets
+// validateSecretsAccess checks for direct access to secrets.
+//
+//nolint:gocognit // Secret access validation requires complex rule evaluation
 func validateSecretsAccess(obj runtime.Object) []Finding {
 	var findings []Finding
-	
+
 	checkSecretsInRules := func(rules []rbacv1.PolicyRule, name, namespace, kind string) {
 		for _, rule := range rules {
 			for _, resource := range rule.Resources {
 				if resource == "secrets" {
 					hasGet := false
 					hasList := false
-					
+
 					for _, verb := range rule.Verbs {
 						switch verb {
 						case "get":
@@ -244,7 +247,7 @@ func validateSecretsAccess(obj runtime.Object) []Finding {
 							hasList = true
 						}
 					}
-					
+
 					if hasGet || hasList {
 						findings = append(findings, Finding{
 							RuleID:      "RBAC003",
@@ -261,38 +264,38 @@ func validateSecretsAccess(obj runtime.Object) []Finding {
 			}
 		}
 	}
-	
+
 	switch v := obj.(type) {
 	case *rbacv1.Role:
 		checkSecretsInRules(v.Rules, v.Name, v.Namespace, "Role")
 	case *rbacv1.ClusterRole:
 		checkSecretsInRules(v.Rules, v.Name, "", "ClusterRole")
 	}
-	
+
 	return findings
 }
 
-// validateNamespacedRoles suggests using Role instead of ClusterRole for namespace-scoped resources
+// validateNamespacedRoles suggests using Role instead of ClusterRole for namespace-scoped resources.
 func validateNamespacedRoles(obj runtime.Object) []Finding {
 	var findings []Finding
-	
+
 	if cr, ok := obj.(*rbacv1.ClusterRole); ok {
 		// Check if all rules only reference namespace-scoped resources
 		allNamespaced := true
 		namespacedResources := map[string]bool{
-			"pods":          true,
-			"services":      true,
-			"deployments":   true,
-			"replicasets":   true,
-			"statefulsets":  true,
-			"daemonsets":    true,
-			"configmaps":    true,
-			"secrets":       true,
-			"ingresses":     true,
-			"jobs":          true,
-			"cronjobs":      true,
+			"pods":         true,
+			"services":     true,
+			"deployments":  true,
+			"replicasets":  true,
+			"statefulsets": true,
+			"daemonsets":   true,
+			"configmaps":   true,
+			"secrets":      true,
+			"ingresses":    true,
+			"jobs":         true,
+			"cronjobs":     true,
 		}
-		
+
 		for _, rule := range cr.Rules {
 			for _, resource := range rule.Resources {
 				if resource == "*" || !namespacedResources[resource] {
@@ -304,7 +307,7 @@ func validateNamespacedRoles(obj runtime.Object) []Finding {
 				break
 			}
 		}
-		
+
 		if allNamespaced && len(cr.Rules) > 0 {
 			findings = append(findings, Finding{
 				RuleID:      "RBAC004",
@@ -318,6 +321,6 @@ func validateNamespacedRoles(obj runtime.Object) []Finding {
 			})
 		}
 	}
-	
+
 	return findings
 }
