@@ -270,8 +270,12 @@ func (pm *PermissionMapper) analyzeEscalationRisk(subjectPerm SubjectPermissions
 				if resource == "secrets" || resource == "*" {
 					hasSecretsAccess = true
 				}
-				// Explicitly match known RBAC resource names
-				if resource == "role" || resource == "roles" || resource == "rolebinding" || resource == "rolebindings" || resource == "*" {
+				// Explicitly match known RBAC resource names including cluster-scoped
+				if resource == "role" || resource == "roles" || 
+					resource == "rolebinding" || resource == "rolebindings" || 
+					resource == "clusterrole" || resource == "clusterroles" || 
+					resource == "clusterrolebinding" || resource == "clusterrolebindings" || 
+					resource == "*" {
 					hasRBACAccess = true
 				}
 			}
