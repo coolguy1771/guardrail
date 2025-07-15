@@ -7,7 +7,8 @@ import (
 	"k8s.io/client-go/tools/clientcmd/api"
 )
 
-// loadKubeConfig loads the kubeconfig and returns the config object
+// loadKubeConfig loads a Kubernetes kubeconfig file from the specified path or the default location if no path is provided.
+// It returns the parsed configuration object or an error if loading fails.
 func loadKubeConfig(kubeconfig string) (*api.Config, error) {
 	configAccess := clientcmd.NewDefaultPathOptions()
 	if kubeconfig != "" {
@@ -16,7 +17,8 @@ func loadKubeConfig(kubeconfig string) (*api.Config, error) {
 	return configAccess.GetStartingConfig()
 }
 
-// GetAvailableContexts returns a list of available contexts in the kubeconfig file
+// GetAvailableContexts retrieves the names of all contexts defined in the specified kubeconfig file.
+// Returns a slice of context names or an error if the kubeconfig cannot be loaded.
 func GetAvailableContexts(kubeconfig string) ([]string, error) {
 	config, err := loadKubeConfig(kubeconfig)
 	if err != nil {
@@ -29,7 +31,8 @@ func GetAvailableContexts(kubeconfig string) ([]string, error) {
 	return contexts, nil
 }
 
-// BuildConfigWithContext returns an *api.Config for a specific context
+// BuildConfigWithContext loads a kubeconfig file and sets the current context to the specified value if provided.
+// Returns the loaded config with the current context set, or an error if loading fails or the context does not exist.
 func BuildConfigWithContext(kubeconfig, context string) (*api.Config, error) {
 	config, err := loadKubeConfig(kubeconfig)
 	if err != nil {

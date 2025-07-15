@@ -12,7 +12,7 @@ type PermissionMapper struct {
 	permissions []SubjectPermissions
 }
 
-// NewPermissionMapper creates a new permission mapper
+// NewPermissionMapper returns a PermissionMapper initialized with the provided subject permissions.
 func NewPermissionMapper(permissions []SubjectPermissions) *PermissionMapper {
 	return &PermissionMapper{
 		permissions: permissions,
