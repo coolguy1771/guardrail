@@ -18,14 +18,14 @@ type Analyzer struct {
 	objects    []runtime.Object
 }
 
-// NewAnalyzer creates a new analyzer instance
+// NewAnalyzer returns a new Analyzer that uses the provided RBACReader to fetch RBAC resources from a live Kubernetes cluster.
 func NewAnalyzer(rbacReader kubernetes.RBACReader) *Analyzer {
 	return &Analyzer{
 		rbacReader: rbacReader,
 	}
 }
 
-// NewAnalyzerFromObjects creates an analyzer from parsed objects
+// NewAnalyzerFromObjects returns a new Analyzer that uses the provided Kubernetes runtime objects for RBAC analysis instead of fetching data from a live cluster.
 func NewAnalyzerFromObjects(objects []runtime.Object) *Analyzer {
 	return &Analyzer{
 		objects: objects,

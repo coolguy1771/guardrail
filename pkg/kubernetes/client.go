@@ -53,7 +53,8 @@ type Client struct {
 	clientset kubernetes.Interface
 }
 
-// NewClient creates a new Kubernetes client
+// NewClient creates a new Client for interacting with a Kubernetes cluster using the specified kubeconfig file and context name.
+// Returns an error if the configuration cannot be loaded or the client cannot be created.
 func NewClient(kubeconfig string, contextName string) (*Client, error) {
 	config, err := getConfigWithContext(kubeconfig, contextName)
 	if err != nil {
@@ -68,7 +69,8 @@ func NewClient(kubeconfig string, contextName string) (*Client, error) {
 	}, nil
 }
 
-// NewClientFromConfig creates a new Kubernetes client from rest.Config
+// NewClientFromConfig returns a new Client using the provided Kubernetes REST configuration.
+// Returns an error if the clientset cannot be created.
 func NewClientFromConfig(config *rest.Config) (*Client, error) {
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
@@ -87,7 +89,7 @@ func (c *Client) GetRBACReader() RBACReader {
 	}
 }
 
-// getConfig returns a kubernetes config
+// getConfig returns a Kubernetes REST configuration using the provided kubeconfig path, or attempts in-cluster and default kubeconfig locations if none is specified.
 func getConfig(kubeconfig string) (*rest.Config, error) {
 	// If running in-cluster
 	if kubeconfig == "" {
@@ -110,7 +112,8 @@ func getConfig(kubeconfig string) (*rest.Config, error) {
 	return config, nil
 }
 
-// getConfigWithContext returns a kubernetes config for a specific context
+// getConfigWithContext loads a Kubernetes REST config from the specified kubeconfig file, optionally overriding the current context.
+// Returns the configured *rest.Config or an error if loading fails.
 func getConfigWithContext(kubeconfig, contextName string) (*rest.Config, error) {
 	loadingRules := &clientcmd.ClientConfigLoadingRules{ExplicitPath: kubeconfig}
 	configOverrides := &clientcmd.ConfigOverrides{}
