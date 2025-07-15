@@ -1,0 +1,19 @@
+name: Coverage Status
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: ["completed"]
+
+jobs:
+  cov-status:
+    name: Send Coverage Status
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.event == 'pull_request'
+    steps:
+      - name: Send coverage status
+        uses: PaloAltoNetworks/cov@3.0.0
+        with:
+          cov_mode: send-status
+          workflow_run_id: ${{ github.event.workflow_run.id }}
+          workflow_head_sha: ${{ github.event.workflow_run.head_sha }}
