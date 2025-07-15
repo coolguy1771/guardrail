@@ -3,6 +3,7 @@ package analyzer
 import (
 	"sort"
 	"strings"
+
 	rbacv1 "k8s.io/api/rbac/v1"
 )
 
@@ -21,7 +22,7 @@ func NewPermissionMapper(permissions []SubjectPermissions) *PermissionMapper {
 // WhoCanDo finds subjects that can perform a specific action on resources
 func (pm *PermissionMapper) WhoCanDo(verb, resource, apiGroup string) []PermissionMatch {
 	var matches []PermissionMatch
-	
+
 	for _, subjectPerm := range pm.permissions {
 		for _, perm := range subjectPerm.Permissions {
 			for _, rule := range perm.Rules {
@@ -36,39 +37,39 @@ func (pm *PermissionMapper) WhoCanDo(verb, resource, apiGroup string) []Permissi
 			}
 		}
 	}
-	
+
 	// Sort by risk level (highest first)
 	sort.Slice(matches, func(i, j int) bool {
-		return pm.getRiskPriority(matches[i].Rule.SecurityImpact.Level) > 
-			   pm.getRiskPriority(matches[j].Rule.SecurityImpact.Level)
+		return pm.getRiskPriority(matches[i].Rule.SecurityImpact.Level) >
+			pm.getRiskPriority(matches[j].Rule.SecurityImpact.Level)
 	})
-	
+
 	return matches
 }
 
 // WhatCanSubjectDo returns all permissions for a specific subject
 func (pm *PermissionMapper) WhatCanSubjectDo(subjectKind, subjectName string) []SubjectPermissions {
 	var matches []SubjectPermissions
-	
+
 	for _, subjectPerm := range pm.permissions {
 		if (subjectKind == "" || subjectPerm.Subject.Kind == subjectKind) &&
-		   (subjectName == "" || subjectPerm.Subject.Name == subjectName) {
+			(subjectName == "" || subjectPerm.Subject.Name == subjectName) {
 			matches = append(matches, subjectPerm)
 		}
 	}
-	
+
 	return matches
 }
 
 // GetDangerousPermissions returns subjects with high-risk permissions
 func (pm *PermissionMapper) GetDangerousPermissions() []DangerousPermission {
 	var dangerous []DangerousPermission
-	
+
 	for _, subjectPerm := range pm.permissions {
 		for _, perm := range subjectPerm.Permissions {
 			for _, rule := range perm.Rules {
-				if rule.SecurityImpact.Level == RiskLevelHigh || 
-				   rule.SecurityImpact.Level == RiskLevelCritical {
+				if rule.SecurityImpact.Level == RiskLevelHigh ||
+					rule.SecurityImpact.Level == RiskLevelCritical {
 					dangerous = append(dangerous, DangerousPermission{
 						Subject:     pm.convertSubject(subjectPerm.Subject),
 						Permission:  perm,
@@ -81,20 +82,20 @@ func (pm *PermissionMapper) GetDangerousPermissions() []DangerousPermission {
 			}
 		}
 	}
-	
+
 	// Sort by risk level
 	sort.Slice(dangerous, func(i, j int) bool {
-		return pm.getRiskPriority(dangerous[i].RiskLevel) > 
-			   pm.getRiskPriority(dangerous[j].RiskLevel)
+		return pm.getRiskPriority(dangerous[i].RiskLevel) >
+			pm.getRiskPriority(dangerous[j].RiskLevel)
 	})
-	
+
 	return dangerous
 }
 
 // GetPrivilegeEscalationPaths finds potential privilege escalation paths
 func (pm *PermissionMapper) GetPrivilegeEscalationPaths() []EscalationPath {
 	var paths []EscalationPath
-	
+
 	for _, subjectPerm := range pm.permissions {
 		escalationRisks := pm.analyzeEscalationRisk(subjectPerm)
 		if len(escalationRisks) > 0 {
@@ -104,7 +105,7 @@ func (pm *PermissionMapper) GetPrivilegeEscalationPaths() []EscalationPath {
 			})
 		}
 	}
-	
+
 	return paths
 }
 
@@ -115,9 +116,9 @@ func (pm *PermissionMapper) GetResourceAccess(resource, apiGroup string) Resourc
 		APIGroup: apiGroup,
 		Access:   make(map[string][]ResourceAccess),
 	}
-	
+
 	verbs := []string{"get", "list", "watch", "create", "update", "patch", "delete", "*"}
-	
+
 	for _, verb := range verbs {
 		matches := pm.WhoCanDo(verb, resource, apiGroup)
 		for _, match := range matches {
@@ -128,7 +129,7 @@ func (pm *PermissionMapper) GetResourceAccess(resource, apiGroup string) Resourc
 			})
 		}
 	}
-	
+
 	return accessMap
 }
 
@@ -139,17 +140,17 @@ func (pm *PermissionMapper) ruleMatches(rule PolicyRuleAnalysis, verb, resource,
 	if !pm.matchesVerb(rule.Verbs, verb) {
 		return false
 	}
-	
+
 	// Check resources
 	if !pm.matchesResource(rule.Resources, resource) {
 		return false
 	}
-	
+
 	// Check API groups
 	if !pm.matchesAPIGroup(rule.APIGroups, apiGroup) {
 		return false
 	}
-	
+
 	return true
 }
 
@@ -177,7 +178,6 @@ func (pm *PermissionMapper) matchesResource(ruleResources []string, targetResour
 	}
 	return false
 }
-
 func (pm *PermissionMapper) matchesAPIGroup(ruleAPIGroups []string, targetAPIGroup string) bool {
 	for _, apiGroup := range ruleAPIGroups {
 		if apiGroup == "*" || apiGroup == targetAPIGroup {
@@ -187,13 +187,17 @@ func (pm *PermissionMapper) matchesAPIGroup(ruleAPIGroups []string, targetAPIGro
 		if apiGroup == "" && targetAPIGroup == "core" {
 			return true
 		}
+		// Core API group in rule matches empty string target
+		if apiGroup == "core" && targetAPIGroup == "" {
+			return true
+		}
 	}
 	return false
 }
 
 func (pm *PermissionMapper) getMatchReason(rule PolicyRuleAnalysis, verb, resource, apiGroup string) string {
 	var reasons []string
-	
+
 	// Check if wildcard matches
 	for _, v := range rule.Verbs {
 		if v == "*" {
@@ -201,31 +205,31 @@ func (pm *PermissionMapper) getMatchReason(rule PolicyRuleAnalysis, verb, resour
 			break
 		}
 	}
-	
+
 	for _, r := range rule.Resources {
 		if r == "*" {
 			reasons = append(reasons, "wildcard resource permission")
 			break
 		}
 	}
-	
+
 	for _, ag := range rule.APIGroups {
 		if ag == "*" {
 			reasons = append(reasons, "wildcard API group permission")
 			break
 		}
 	}
-	
+
 	if len(reasons) == 0 {
 		reasons = append(reasons, "explicit permission match")
 	}
-	
+
 	return strings.Join(reasons, ", ")
 }
 
 func (pm *PermissionMapper) analyzeEscalationRisk(subjectPerm SubjectPermissions) []EscalationRisk {
 	var risks []EscalationRisk
-	
+
 	for _, perm := range subjectPerm.Permissions {
 		for _, rule := range perm.Rules {
 			// Check for escalate verb
@@ -238,7 +242,7 @@ func (pm *PermissionMapper) analyzeEscalationRisk(subjectPerm SubjectPermissions
 						Rule:        rule,
 					})
 				}
-				
+
 				if verb == "impersonate" {
 					risks = append(risks, EscalationRisk{
 						Type:        "Identity Impersonation",
@@ -247,7 +251,7 @@ func (pm *PermissionMapper) analyzeEscalationRisk(subjectPerm SubjectPermissions
 						Rule:        rule,
 					})
 				}
-				
+
 				if verb == "*" {
 					risks = append(risks, EscalationRisk{
 						Type:        "Unrestricted Access",
@@ -257,20 +261,21 @@ func (pm *PermissionMapper) analyzeEscalationRisk(subjectPerm SubjectPermissions
 					})
 				}
 			}
-			
+
 			// Check for dangerous resource combinations
 			hasSecretsAccess := false
 			hasRBACAccess := false
-			
+
 			for _, resource := range rule.Resources {
 				if resource == "secrets" || resource == "*" {
 					hasSecretsAccess = true
 				}
-				if strings.Contains(resource, "role") || resource == "*" {
+				// Explicitly match known RBAC resource names
+				if resource == "role" || resource == "roles" || resource == "rolebinding" || resource == "rolebindings" || resource == "*" {
 					hasRBACAccess = true
 				}
 			}
-			
+
 			if hasSecretsAccess && hasRBACAccess {
 				risks = append(risks, EscalationRisk{
 					Type:        "Secrets + RBAC Access",
@@ -281,7 +286,7 @@ func (pm *PermissionMapper) analyzeEscalationRisk(subjectPerm SubjectPermissions
 			}
 		}
 	}
-	
+
 	return risks
 }
 
@@ -312,20 +317,20 @@ func (pm *PermissionMapper) convertSubject(subject rbacv1.Subject) SubjectRef {
 
 // PermissionMatch represents a subject that matches a permission query
 type PermissionMatch struct {
-	Subject     SubjectRef        `json:"subject"`
-	Permission  PermissionGrant   `json:"permission"`
+	Subject     SubjectRef         `json:"subject"`
+	Permission  PermissionGrant    `json:"permission"`
 	Rule        PolicyRuleAnalysis `json:"rule"`
-	MatchReason string            `json:"match_reason"`
+	MatchReason string             `json:"match_reason"`
 }
 
 // DangerousPermission represents a high-risk permission
 type DangerousPermission struct {
-	Subject     SubjectRef        `json:"subject"`
-	Permission  PermissionGrant   `json:"permission"`
+	Subject     SubjectRef         `json:"subject"`
+	Permission  PermissionGrant    `json:"permission"`
 	Rule        PolicyRuleAnalysis `json:"rule"`
-	RiskLevel   RiskLevel         `json:"risk_level"`
-	Explanation string            `json:"explanation"`
-	Concerns    []string          `json:"concerns"`
+	RiskLevel   RiskLevel          `json:"risk_level"`
+	Explanation string             `json:"explanation"`
+	Concerns    []string           `json:"concerns"`
 }
 
 // EscalationPath represents potential privilege escalation
@@ -336,24 +341,24 @@ type EscalationPath struct {
 
 // EscalationRisk represents a specific escalation risk
 type EscalationRisk struct {
-	Type        string            `json:"type"`
-	Description string            `json:"description"`
-	Severity    RiskLevel         `json:"severity"`
+	Type        string             `json:"type"`
+	Description string             `json:"description"`
+	Severity    RiskLevel          `json:"severity"`
 	Rule        PolicyRuleAnalysis `json:"rule"`
 }
 
 // ResourceAccessMap shows who can access a resource
 type ResourceAccessMap struct {
-	Resource string                       `json:"resource"`
-	APIGroup string                       `json:"api_group"`
-	Access   map[string][]ResourceAccess  `json:"access"`
+	Resource string                      `json:"resource"`
+	APIGroup string                      `json:"api_group"`
+	Access   map[string][]ResourceAccess `json:"access"`
 }
 
 // ResourceAccess represents access to a resource
 type ResourceAccess struct {
-	Subject    SubjectRef    `json:"subject"`
+	Subject    SubjectRef      `json:"subject"`
 	Permission PermissionGrant `json:"permission"`
-	RiskLevel  RiskLevel     `json:"risk_level"`
+	RiskLevel  RiskLevel       `json:"risk_level"`
 }
 
 // SubjectRef is a simplified subject reference

@@ -25,6 +25,7 @@ var (
 	subject          string
 	showRoles        bool
 	riskLevel        string
+	noColor          bool
 )
 
 var analyzeCmd = &cobra.Command{
@@ -47,6 +48,7 @@ func init() {
 	analyzeCmd.Flags().StringVarP(&subject, "subject", "s", "", "Filter by subject name (user, group, or service account)")
 	analyzeCmd.Flags().BoolVar(&showRoles, "show-roles", false, "Show detailed role information")
 	analyzeCmd.Flags().StringVar(&riskLevel, "risk-level", "", "Filter by risk level (low, medium, high, critical)")
+	analyzeCmd.Flags().BoolVar(&noColor, "no-color", false, "Disable colored output")
 
 	viper.BindPFlag("analyze.file", analyzeCmd.Flags().Lookup("file"))
 	viper.BindPFlag("analyze.directory", analyzeCmd.Flags().Lookup("dir"))
@@ -56,6 +58,7 @@ func init() {
 	viper.BindPFlag("analyze.subject", analyzeCmd.Flags().Lookup("subject"))
 	viper.BindPFlag("analyze.show-roles", analyzeCmd.Flags().Lookup("show-roles"))
 	viper.BindPFlag("analyze.risk-level", analyzeCmd.Flags().Lookup("risk-level"))
+	viper.BindPFlag("analyze.no-color", analyzeCmd.Flags().Lookup("no-color"))
 }
 
 func runAnalyze(cmd *cobra.Command, args []string) error {
@@ -93,7 +96,7 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 
 	if cluster {
 		// Analyze live cluster
-		client, err := kubernetes.NewClient(kubeconfig)
+		client, err := kubernetes.NewClient(kubeconfig, kubectx)
 		if err != nil {
 			return fmt.Errorf("failed to create kubernetes client: %w", err)
 		}
@@ -101,7 +104,7 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 	} else {
 		// Analyze files
 		var objects []runtime.Object
-		
+
 		if file != "" {
 			objects, err = parseFile(file)
 			if err != nil {
@@ -148,6 +151,7 @@ func parseFile(filename string) ([]runtime.Object, error) {
 func parseDirectory(directory string) ([]runtime.Object, error) {
 	var allObjects []runtime.Object
 	p := parser.New()
+	failedParses := 0
 
 	err := filepath.Walk(directory, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -157,12 +161,17 @@ func parseDirectory(directory string) ([]runtime.Object, error) {
 			objects, err := p.ParseFile(path)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: Failed to parse %s: %v\n", path, err)
+				failedParses++
 				return nil
 			}
 			allObjects = append(allObjects, objects...)
 		}
 		return nil
 	})
+
+	if failedParses > 0 {
+		fmt.Fprintf(os.Stderr, "\n%d file(s) failed to parse in directory '%s'.\n", failedParses, directory)
+	}
 
 	return allObjects, err
 }
@@ -196,7 +205,7 @@ func outputJSON(permissions []analyzer.SubjectPermissions) error {
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(map[string]interface{}{
 		"subjects": permissions,
-		"summary": getSummary(permissions),
+		"summary":  getSummary(permissions),
 	})
 }
 
@@ -234,7 +243,7 @@ func printSubjectAnalysis(subjectPerm analyzer.SubjectPermissions, showRoles boo
 	// Print subject header
 	riskIcon := getRiskIcon(subjectPerm.RiskLevel)
 	fmt.Printf("%s %s: %s\n", riskIcon, subjectPerm.Subject.Kind, subjectPerm.Subject.Name)
-	
+
 	if subjectPerm.Subject.Namespace != "" {
 		fmt.Printf("   Namespace: %s\n", subjectPerm.Subject.Namespace)
 	}
@@ -266,7 +275,7 @@ func printSubjectAnalysis(subjectPerm analyzer.SubjectPermissions, showRoles boo
 func printRuleAnalysis(rule analyzer.PolicyRuleAnalysis, indent string) {
 	fmt.Printf("%s• %s\n", indent, rule.HumanReadable)
 	fmt.Printf("%s  Risk: %s\n", indent, strings.ToUpper(string(rule.SecurityImpact.Level)))
-	
+
 	if len(rule.SecurityImpact.Concerns) > 0 {
 		fmt.Printf("%s  ⚠️  Concerns: %s\n", indent, strings.Join(rule.SecurityImpact.Concerns, ", "))
 	}
@@ -291,7 +300,7 @@ func generatePermissionSummary(rules []analyzer.PolicyRuleAnalysis) string {
 
 	var summaryParts []string
 	highRiskCount := 0
-	
+
 	for _, rule := range rules {
 		if rule.SecurityImpact.Level == analyzer.RiskLevelHigh || rule.SecurityImpact.Level == analyzer.RiskLevelCritical {
 			highRiskCount++
@@ -299,7 +308,7 @@ func generatePermissionSummary(rules []analyzer.PolicyRuleAnalysis) string {
 	}
 
 	summaryParts = append(summaryParts, fmt.Sprintf("%d permission rule(s)", len(rules)))
-	
+
 	if highRiskCount > 0 {
 		summaryParts = append(summaryParts, fmt.Sprintf("%d high-risk", highRiskCount))
 	}
@@ -322,7 +331,25 @@ func getRiskIcon(level analyzer.RiskLevel) string {
 	}
 }
 
+func isColorSupported() bool {
+	if noColor {
+		return false
+	}
+	if os.Getenv("NO_COLOR") != "" {
+		return false
+	}
+	// Check if stdout is a terminal
+	fi, err := os.Stdout.Stat()
+	if err != nil {
+		return false
+	}
+	return (fi.Mode() & os.ModeCharDevice) != 0
+}
+
 func getColorForRisk(riskLevel string) string {
+	if !isColorSupported() {
+		return ""
+	}
 	switch riskLevel {
 	case "critical":
 		return "\033[91m" // Bright red
@@ -338,6 +365,9 @@ func getColorForRisk(riskLevel string) string {
 }
 
 func resetColor() string {
+	if !isColorSupported() {
+		return ""
+	}
 	return "\033[0m"
 }
 

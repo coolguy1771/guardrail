@@ -6,10 +6,10 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/coolguy1771/guardrail/pkg/kubernetes"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"github.com/coolguy1771/guardrail/pkg/kubernetes"
 )
 
 // Analyzer provides RBAC analysis capabilities
@@ -41,25 +41,25 @@ type SubjectPermissions struct {
 
 // PermissionGrant represents a specific permission grant
 type PermissionGrant struct {
-	RoleName      string              `json:"role_name"`
-	RoleKind      string              `json:"role_kind"`
-	Namespace     string              `json:"namespace,omitempty"`
-	Scope         string              `json:"scope"`
-	Rules         []PolicyRuleAnalysis `json:"rules"`
-	BindingName   string              `json:"binding_name"`
-	BindingKind   string              `json:"binding_kind"`
+	RoleName    string               `json:"role_name"`
+	RoleKind    string               `json:"role_kind"`
+	Namespace   string               `json:"namespace,omitempty"`
+	Scope       string               `json:"scope"`
+	Rules       []PolicyRuleAnalysis `json:"rules"`
+	BindingName string               `json:"binding_name"`
+	BindingKind string               `json:"binding_kind"`
 }
 
 // PolicyRuleAnalysis provides detailed analysis of a policy rule
 type PolicyRuleAnalysis struct {
-	APIGroups           []string           `json:"api_groups"`
-	Resources           []string           `json:"resources"`
-	Verbs               []string           `json:"verbs"`
-	ResourceNames       []string           `json:"resource_names,omitempty"`
-	NonResourceURLs     []string           `json:"non_resource_urls,omitempty"`
-	HumanReadable       string             `json:"human_readable"`
-	SecurityImpact      SecurityImpact     `json:"security_impact"`
-	VerbExplanations    []VerbExplanation  `json:"verb_explanations"`
+	APIGroups        []string          `json:"api_groups"`
+	Resources        []string          `json:"resources"`
+	Verbs            []string          `json:"verbs"`
+	ResourceNames    []string          `json:"resource_names,omitempty"`
+	NonResourceURLs  []string          `json:"non_resource_urls,omitempty"`
+	HumanReadable    string            `json:"human_readable"`
+	SecurityImpact   SecurityImpact    `json:"security_impact"`
+	VerbExplanations []VerbExplanation `json:"verb_explanations"`
 }
 
 // VerbExplanation provides plain English explanation of what a verb allows
@@ -92,7 +92,7 @@ func (a *Analyzer) AnalyzePermissions(ctx context.Context) ([]SubjectPermissions
 	var allBindings []runtime.Object
 	var allRoles []runtime.Object
 
-	if a.clientset != nil {
+	if a.rbacReader != nil {
 		// Fetch from cluster
 		bindings, roles, err := a.fetchFromCluster(ctx)
 		if err != nil {
@@ -194,7 +194,7 @@ func (a *Analyzer) fetchFromCluster(ctx context.Context) ([]runtime.Object, []ru
 // buildRoleMap creates a map for quick role lookup
 func (a *Analyzer) buildRoleMap(roles []runtime.Object) map[string]runtime.Object {
 	roleMap := make(map[string]runtime.Object)
-	
+
 	for _, role := range roles {
 		switch r := role.(type) {
 		case *rbacv1.Role:
@@ -205,28 +205,28 @@ func (a *Analyzer) buildRoleMap(roles []runtime.Object) map[string]runtime.Objec
 			roleMap[key] = role
 		}
 	}
-	
+
 	return roleMap
 }
 
 // analyzeBinding analyzes a single binding and returns permissions for each subject
 func (a *Analyzer) analyzeBinding(binding runtime.Object, roleMap map[string]runtime.Object) []*SubjectPermissions {
 	var result []*SubjectPermissions
-	
+
 	switch b := binding.(type) {
 	case *rbacv1.RoleBinding:
 		result = a.analyzeRoleBinding(b, roleMap)
 	case *rbacv1.ClusterRoleBinding:
 		result = a.analyzeClusterRoleBinding(b, roleMap)
 	}
-	
+
 	return result
 }
 
 // analyzeRoleBinding analyzes a RoleBinding
 func (a *Analyzer) analyzeRoleBinding(binding *rbacv1.RoleBinding, roleMap map[string]runtime.Object) []*SubjectPermissions {
 	var result []*SubjectPermissions
-	
+
 	// Find the referenced role
 	var roleKey string
 	var scope string
@@ -237,7 +237,7 @@ func (a *Analyzer) analyzeRoleBinding(binding *rbacv1.RoleBinding, roleMap map[s
 		roleKey = fmt.Sprintf("Role/%s/%s", binding.Namespace, binding.RoleRef.Name)
 		scope = fmt.Sprintf("namespace:%s", binding.Namespace)
 	}
-	
+
 	role, exists := roleMap[roleKey]
 	if !exists {
 		// Role not found, create a placeholder
@@ -259,7 +259,7 @@ func (a *Analyzer) analyzeRoleBinding(binding *rbacv1.RoleBinding, roleMap map[s
 		}
 		return result
 	}
-	
+
 	// Analyze the role
 	var rules []rbacv1.PolicyRule
 	switch r := role.(type) {
@@ -268,9 +268,9 @@ func (a *Analyzer) analyzeRoleBinding(binding *rbacv1.RoleBinding, roleMap map[s
 	case *rbacv1.ClusterRole:
 		rules = r.Rules
 	}
-	
+
 	analyzedRules := a.analyzeRules(rules)
-	
+
 	// Create permissions for each subject
 	for _, subject := range binding.Subjects {
 		result = append(result, &SubjectPermissions{
@@ -288,17 +288,17 @@ func (a *Analyzer) analyzeRoleBinding(binding *rbacv1.RoleBinding, roleMap map[s
 			},
 		})
 	}
-	
+
 	return result
 }
 
 // analyzeClusterRoleBinding analyzes a ClusterRoleBinding
 func (a *Analyzer) analyzeClusterRoleBinding(binding *rbacv1.ClusterRoleBinding, roleMap map[string]runtime.Object) []*SubjectPermissions {
 	var result []*SubjectPermissions
-	
+
 	roleKey := fmt.Sprintf("ClusterRole//%s", binding.RoleRef.Name)
 	role, exists := roleMap[roleKey]
-	
+
 	if !exists {
 		// Role not found, create a placeholder
 		for _, subject := range binding.Subjects {
@@ -318,10 +318,10 @@ func (a *Analyzer) analyzeClusterRoleBinding(binding *rbacv1.ClusterRoleBinding,
 		}
 		return result
 	}
-	
+
 	clusterRole := role.(*rbacv1.ClusterRole)
 	analyzedRules := a.analyzeRules(clusterRole.Rules)
-	
+
 	// Create permissions for each subject
 	for _, subject := range binding.Subjects {
 		result = append(result, &SubjectPermissions{
@@ -338,14 +338,14 @@ func (a *Analyzer) analyzeClusterRoleBinding(binding *rbacv1.ClusterRoleBinding,
 			},
 		})
 	}
-	
+
 	return result
 }
 
 // analyzeRules analyzes policy rules and provides human-readable explanations
 func (a *Analyzer) analyzeRules(rules []rbacv1.PolicyRule) []PolicyRuleAnalysis {
 	var result []PolicyRuleAnalysis
-	
+
 	for _, rule := range rules {
 		analysis := PolicyRuleAnalysis{
 			APIGroups:       rule.APIGroups,
@@ -354,32 +354,32 @@ func (a *Analyzer) analyzeRules(rules []rbacv1.PolicyRule) []PolicyRuleAnalysis 
 			ResourceNames:   rule.ResourceNames,
 			NonResourceURLs: rule.NonResourceURLs,
 		}
-		
+
 		// Generate human-readable explanation
 		analysis.HumanReadable = a.generateHumanReadableExplanation(rule)
-		
+
 		// Analyze security impact
 		analysis.SecurityImpact = a.analyzeSecurityImpact(rule)
-		
+
 		// Explain each verb
 		analysis.VerbExplanations = a.explainVerbs(rule.Verbs, rule.Resources)
-		
+
 		result = append(result, analysis)
 	}
-	
+
 	return result
 }
 
 // generateHumanReadableExplanation creates a human-readable explanation of the rule
 func (a *Analyzer) generateHumanReadableExplanation(rule rbacv1.PolicyRule) string {
 	var parts []string
-	
+
 	// Handle non-resource URLs
 	if len(rule.NonResourceURLs) > 0 {
 		parts = append(parts, fmt.Sprintf("Access to API endpoints: %s", strings.Join(rule.NonResourceURLs, ", ")))
 		return strings.Join(parts, ". ")
 	}
-	
+
 	// Handle resources
 	resources := rule.Resources
 	if len(resources) == 0 || (len(resources) == 1 && resources[0] == "*") {
@@ -387,7 +387,7 @@ func (a *Analyzer) generateHumanReadableExplanation(rule rbacv1.PolicyRule) stri
 	} else {
 		parts = append(parts, fmt.Sprintf("Access to: %s", strings.Join(resources, ", ")))
 	}
-	
+
 	// Handle API groups
 	apiGroups := rule.APIGroups
 	if len(apiGroups) > 0 {
@@ -405,7 +405,7 @@ func (a *Analyzer) generateHumanReadableExplanation(rule rbacv1.PolicyRule) stri
 			parts = append(parts, fmt.Sprintf("in API groups: %s", strings.Join(cleanGroups, ", ")))
 		}
 	}
-	
+
 	// Handle verbs
 	verbs := rule.Verbs
 	if len(verbs) == 1 && verbs[0] == "*" {
@@ -413,19 +413,19 @@ func (a *Analyzer) generateHumanReadableExplanation(rule rbacv1.PolicyRule) stri
 	} else {
 		parts = append(parts, fmt.Sprintf("with permissions: %s", strings.Join(verbs, ", ")))
 	}
-	
+
 	// Handle resource names
 	if len(rule.ResourceNames) > 0 {
 		parts = append(parts, fmt.Sprintf("limited to specific resources: %s", strings.Join(rule.ResourceNames, ", ")))
 	}
-	
+
 	return strings.Join(parts, " ")
 }
 
 // explainVerbs provides detailed explanations for each verb
 func (a *Analyzer) explainVerbs(verbs []string, resources []string) []VerbExplanation {
 	var explanations []VerbExplanation
-	
+
 	verbMap := map[string]VerbExplanation{
 		"get": {
 			Verb:        "get",
@@ -506,7 +506,7 @@ func (a *Analyzer) explainVerbs(verbs []string, resources []string) []VerbExplan
 			Examples:    "Full administrative access, can do anything",
 		},
 	}
-	
+
 	// Adjust risk levels based on resources
 	for _, verb := range verbs {
 		if explanation, exists := verbMap[verb]; exists {
@@ -525,46 +525,86 @@ func (a *Analyzer) explainVerbs(verbs []string, resources []string) []VerbExplan
 			})
 		}
 	}
-	
+
 	return explanations
 }
 
 // isSensitiveResource checks if resources are considered sensitive
 func (a *Analyzer) isSensitiveResource(resources []string) bool {
 	sensitiveResources := map[string]bool{
-		"*":                           true,
-		"secrets":                     true,
-		"serviceaccounts":             true,
-		"roles":                       true,
-		"rolebindings":                true,
-		"clusterroles":                true,
-		"clusterrolebindings":         true,
-		"nodes":                       true,
-		"persistentvolumes":           true,
-		"podsecuritypolicies":         true,
-		"networkpolicies":             true,
-		"pods/exec":                   true,
-		"pods/portforward":            true,
-		"pods/proxy":                  true,
-		"configmaps":                  true,
-		"certificatesigningrequests":  true,
+		"*":                               true,
+		"secrets":                         true,
+		"serviceaccounts":                 true,
+		"roles":                           true,
+		"rolebindings":                    true,
+		"clusterroles":                    true,
+		"clusterrolebindings":             true,
+		"nodes":                           true,
+		"persistentvolumes":               true,
+		"podsecuritypolicies":             true,
+		"networkpolicies":                 true,
+		"pods/exec":                       true,
+		"pods/portforward":                true,
+		"pods/proxy":                      true,
+		"configmaps":                      true,
+		"certificatesigningrequests":      true,
 		"validatingwebhookconfigurations": true,
 		"mutatingwebhookconfigurations":   true,
-		"customresourcedefinitions":   true,
-		"apiservices":                 true,
-		"tokenreviews":                true,
-		"subjectaccessreviews":        true,
-		"selfsubjectaccessreviews":    true,
-		"nodes/proxy":                 true,
-		"services/proxy":              true,
-		"namespaces":                  true,
-		"events":                      true,
-		"pods/attach":                 true,
-		"pods/log":                    true,
-		"priorityclasses":             true,
-		"storageclasses":              true,
+		"customresourcedefinitions":       true,
+		"apiservices":                     true,
+		"tokenreviews":                    true,
+		"subjectaccessreviews":            true,
+		"selfsubjectaccessreviews":        true,
+		"nodes/proxy":                     true,
+		"services/proxy":                  true,
+		"namespaces":                      true,
+		"events":                          true,
+		"pods/attach":                     true,
+		"pods/log":                        true,
+		"priorityclasses":                 true,
+		"storageclasses":                  true,
+		"volumeattachments":               true,
+		"csidrivers":                      true,
+		"csinodes":                        true,
+		"admissionregistration.k8s.io/*":  true,
+		"authentication.k8s.io/*":         true,
+		"authorization.k8s.io/*":          true,
+		"certificates.k8s.io/*":           true,
+		"rbac.authorization.k8s.io/*":     true,
+		"policy/*":                        true,
+		"security.openshift.io/*":         true,
+		"oauth.openshift.io/*":            true,
+		"user.openshift.io/*":             true,
+		"ingresses":                       true,
+		"ingressclasses":                  true,
+		"nodes/status":                    true,
+		"pods/eviction":                   true,
+		"deployments/scale":               true,
+		"replicasets/scale":               true,
+		"statefulsets/scale":              true,
+		"horizontalpodautoscalers":        true,
+		"verticalpodautoscalers":          true,
+		"poddisruptionbudgets":            true,
+		"resourcequotas":                  true,
+		"limitranges":                     true,
+		"endpoints":                       true,
+		"endpointslices":                  true,
+		"nodes/metrics":                   true,
+		"pods/metrics":                    true,
+		"bindings":                        true,
+		"componentstatuses":               true,
+		"localsubjectaccessreviews":       true,
+		"selfsubjectrulesreviews":         true,
+		"subjectaccessreviews/*":          true,
+		"clusterrolebindings/*":           true,
+		"clusterroles/*":                  true,
+		"rolebindings/*":                  true,
+		"roles/*":                         true,
+		"secrets/*":                       true,
+		"serviceaccounts/*":               true,
+		"serviceaccounts/token":           true,
 	}
-	
+
 	for _, resource := range resources {
 		if sensitiveResources[resource] {
 			return true
@@ -594,33 +634,33 @@ func (a *Analyzer) analyzeSecurityImpact(rule rbacv1.PolicyRule) SecurityImpact 
 		Description: "Standard resource access",
 		Concerns:    []string{},
 	}
-	
+
 	// Check for wildcards
 	hasWildcardVerb := false
 	hasWildcardResource := false
 	hasWildcardAPIGroup := false
-	
+
 	for _, verb := range rule.Verbs {
 		if verb == "*" {
 			hasWildcardVerb = true
 			break
 		}
 	}
-	
+
 	for _, resource := range rule.Resources {
 		if resource == "*" {
 			hasWildcardResource = true
 			break
 		}
 	}
-	
+
 	for _, apiGroup := range rule.APIGroups {
 		if apiGroup == "*" {
 			hasWildcardAPIGroup = true
 			break
 		}
 	}
-	
+
 	// Analyze risk factors
 	if hasWildcardVerb && hasWildcardResource && hasWildcardAPIGroup {
 		impact.Level = RiskLevelCritical
@@ -635,7 +675,7 @@ func (a *Analyzer) analyzeSecurityImpact(rule rbacv1.PolicyRule) SecurityImpact 
 		impact.Description = "Access to all resources with specified permissions"
 		impact.Concerns = append(impact.Concerns, "Can access any resource type")
 	}
-	
+
 	// Check for dangerous verbs
 	dangerousVerbs := []string{"delete", "deletecollection", "escalate", "impersonate"}
 	for _, verb := range rule.Verbs {
@@ -648,7 +688,7 @@ func (a *Analyzer) analyzeSecurityImpact(rule rbacv1.PolicyRule) SecurityImpact 
 			}
 		}
 	}
-	
+
 	// Check for sensitive resources
 	if a.isSensitiveResource(rule.Resources) {
 		if impact.Level == RiskLevelLow {
@@ -656,12 +696,12 @@ func (a *Analyzer) analyzeSecurityImpact(rule rbacv1.PolicyRule) SecurityImpact 
 		}
 		impact.Concerns = append(impact.Concerns, "Accesses sensitive resources")
 	}
-	
+
 	// Check for non-resource URLs
 	if len(rule.NonResourceURLs) > 0 {
 		impact.Concerns = append(impact.Concerns, "Can access API endpoints directly")
 	}
-	
+
 	return impact
 }
 
@@ -673,7 +713,7 @@ func (a *Analyzer) getSubjectKey(subject rbacv1.Subject) string {
 
 func (a *Analyzer) calculateRiskLevel(permissions []PermissionGrant) RiskLevel {
 	maxRisk := RiskLevelLow
-	
+
 	for _, perm := range permissions {
 		for _, rule := range perm.Rules {
 			if a.getRiskPriority(rule.SecurityImpact.Level) > a.getRiskPriority(maxRisk) {
@@ -681,7 +721,7 @@ func (a *Analyzer) calculateRiskLevel(permissions []PermissionGrant) RiskLevel {
 			}
 		}
 	}
-	
+
 	return maxRisk
 }
 
