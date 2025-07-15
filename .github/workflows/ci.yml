@@ -51,6 +51,15 @@ jobs:
         shell: bash
         run: go test -v -race -covermode=atomic -coverprofile=coverage.out ./...
 
+      - name: Check coverage with Cov
+        if: matrix.os == 'ubuntu-latest' && matrix.go-version == env.GO_VERSION
+        uses: PaloAltoNetworks/cov@3.0.0
+        with:
+          cov_mode: coverage
+          cov_file: coverage.out
+          cov_threshold: "70"
+          main_branch: main
+
   build:
     name: Build
     runs-on: ubuntu-latest
@@ -92,6 +101,9 @@ jobs:
     name: Integration Test
     runs-on: ubuntu-latest
     needs: build
+    strategy:
+      matrix:
+        k8s-version: ['1.30', '1.31', '1.32']
     steps:
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
@@ -101,9 +113,88 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
-      - name: Run integration tests
+      - name: Download artifacts
+        uses: actions/download-artifact@cb32cb94beca4a65dd675343bbcdf6419f893c6d # v4
+        with:
+          name: guardrail-linux-amd64
+          path: ./
+
+      - name: Make binary executable
+        run: chmod +x guardrail-linux-amd64
+
+      - name: Create kind cluster
+        uses: helm/kind-action@3ced8b795c88a04788272e4f10158e1c3cd3fce3 # v1.10.0
+        with:
+          version: v0.20.0
+          node_image: kindest/node:v${{ matrix.k8s-version }}.0
+          cluster_name: kind
+
+      - name: Run integration tests against files
         run: |
-          go build -o guardrail ./cmd/guardrail
-          ./guardrail validate -d testdata/
-          ./guardrail validate -f testdata/good-role.yaml -o json
-          ./guardrail validate -f testdata/role-with-wildcard.yaml -o sarif
+          # Test validate command
+          ./guardrail-linux-amd64 validate -d testdata/
+          ./guardrail-linux-amd64 validate -f testdata/good-role.yaml -o json | jq .
+          ./guardrail-linux-amd64 validate -f testdata/role-with-wildcard.yaml -o sarif | jq .
+          
+          # Test analyze command
+          ./guardrail-linux-amd64 analyze -d testdata/
+          ./guardrail-linux-amd64 analyze -f testdata/complex-rbac.yaml --show-roles
+          ./guardrail-linux-amd64 analyze -f testdata/complex-rbac.yaml --risk-level critical -o json | jq .
+
+      - name: Apply test RBAC to cluster
+        run: |
+          kubectl apply -f testdata/
+
+      - name: Run integration tests against cluster
+        run: |
+          # Test validate against cluster (if implemented)
+          # ./guardrail-linux-amd64 validate --cluster || true
+          
+          # Test analyze against cluster
+          ./guardrail-linux-amd64 analyze --cluster
+          ./guardrail-linux-amd64 analyze --cluster --subject system:masters
+          ./guardrail-linux-amd64 analyze --cluster --risk-level high -o json | jq .
+
+  benchmark:
+    name: Benchmark
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - name: Set up Go
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Run benchmarks
+        run: |
+          go test -bench=. -benchmem ./... | tee benchmark.txt
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: benchmark-results
+          path: benchmark.txt
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@84384bd6e777ef152729993b8145ea352e9dd3ef # v0.29.0
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@e5b8155e59c14c44776851d5fca3ea8c3f15f402 # v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+
