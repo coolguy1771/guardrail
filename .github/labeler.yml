@@ -1,56 +1,149 @@
-# Add 'repo' label to any root file changes
-repo:
-  - .gitignore
-  - .goreleaser.yml
-  - Dockerfile
-  - LICENSE
-  - README.md
-  - Makefile
+# Configuration for GitHub Labeler Action
+# https://github.com/actions/labeler
 
-# Add 'documentation' label to any documentation changes
+# Documentation changes
 documentation:
-  - docs/**/*
-  - "*.md"
+  - changed-files:
+    - any-glob-to-any-file:
+      - '**/*.md'
+      - 'docs/**'
+      - 'examples/**'
+      - 'LICENSE'
 
-# Add 'github' label to changes in GitHub templates
-github:
-  - .github/**/*
-
-# Add 'go' label to changes in Go files
+# Go source code changes
 go:
-  - "**/*.go"
-  - go.mod
-  - go.sum
+  - changed-files:
+    - any-glob-to-any-file:
+      - '**/*.go'
+      - 'go.mod'
+      - 'go.sum'
 
-# Add 'deps' label to dependency changes
-deps:
-  - go.mod
-  - go.sum
-  - renovate.json
+# CLI/Command changes
+cli:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'cmd/**/*.go'
 
-# Add 'renovate' label to renovate config changes
-renovate:
-  - renovate.json
-  - .github/workflows/renovate.yml
+# Core package changes
+core:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'pkg/**/*.go'
 
-# Add 'config' label to configuration changes
-config:
-  - configs/**/*
-  - "**/*.yaml"
-  - "**/*.yml"
+# Analyzer feature
+analyzer:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'pkg/analyzer/**'
+      - 'cmd/guardrail/analyze.go'
+      - 'RBAC_ANALYSIS.md'
 
-# Add 'test' label to test changes
+# Validator feature
+validator:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'pkg/validator/**'
+      - 'cmd/guardrail/validate.go'
+
+# Kubernetes integration
+kubernetes:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'pkg/kubernetes/**'
+
+# Parser changes
+parser:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'pkg/parser/**'
+
+# Reporter/Output changes
+reporter:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'pkg/reporter/**'
+
+# Test changes
 test:
-  - "**/*_test.go"
-  - testdata/**/*
+  - changed-files:
+    - any-glob-to-any-file:
+      - '**/*_test.go'
+      - 'testdata/**'
 
-# Add 'ci' label to CI/CD changes
+# CI/CD changes
 ci:
-  - .github/workflows/**/*
-  - .goreleaser.yml
-  - Dockerfile
+  - changed-files:
+    - any-glob-to-any-file:
+      - '.github/workflows/**'
+      - '.github/actions/**'
+      - '.golangci.yml'
+      - '.goreleaser.yml'
+      - 'Makefile'
 
-# Add 'security' label to security-related changes
+# Docker changes
+docker:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'Dockerfile*'
+      - '.dockerignore'
+      - 'docker-compose*.yml'
+
+# Dependencies
+dependencies:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'go.mod'
+      - 'go.sum'
+      - 'renovate.json'
+
+# Renovate specific
+renovate:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'renovate.json'
+      - '.github/renovate.json5'
+
+# Configuration changes
+config:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'configs/**'
+      - '.golangci.yml'
+      - '.gitignore'
+      - '.goreleaser.yml'
+      - '**/*.yaml'
+      - '**/*.yml'
+
+# Security-related changes
 security:
-  - .github/workflows/security.yml
-  - pkg/validator/**/*
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'pkg/validator/**'
+      - 'pkg/analyzer/**'
+      - '.github/workflows/security.yml'
+      - '.github/workflows/codeql-*.yml'
+      - '**/security*.go'
+
+# GitHub specific changes
+github:
+  - changed-files:
+    - any-glob-to-any-file:
+      - '.github/**'
+
+# Build/Release changes
+build:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'Makefile'
+      - '.goreleaser.yml'
+      - 'scripts/**'
+      - '.github/workflows/release.yml'
+
+# Root repository files
+repo:
+  - changed-files:
+    - any-glob-to-any-file:
+      - '.gitignore'
+      - 'LICENSE'
+      - 'README.md'
+      - 'CLAUDE.md'
