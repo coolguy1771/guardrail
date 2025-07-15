@@ -3,16 +3,19 @@ package analyzer
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
-	"github.com/coolguy1771/guardrail/pkg/kubernetes"
+	"k8s.io/apimachinery/pkg/runtime"
+
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
+
+	"github.com/coolguy1771/guardrail/pkg/kubernetes"
 )
 
-// Analyzer provides RBAC analysis capabilities
+// Analyzer provides RBAC analysis capabilities.
 type Analyzer struct {
 	rbacReader kubernetes.RBACReader
 	objects    []runtime.Object
@@ -20,6 +23,7 @@ type Analyzer struct {
 
 // NewAnalyzer returns a new Analyzer that uses the provided RBACReader to fetch RBAC resources from a live Kubernetes cluster.
 func NewAnalyzer(rbacReader kubernetes.RBACReader) *Analyzer {
+	//nolint:exhaustruct // objects field is intentionally nil for cluster-based analysis
 	return &Analyzer{
 		rbacReader: rbacReader,
 	}
@@ -27,19 +31,20 @@ func NewAnalyzer(rbacReader kubernetes.RBACReader) *Analyzer {
 
 // NewAnalyzerFromObjects returns a new Analyzer that uses the provided Kubernetes runtime objects for RBAC analysis instead of fetching data from a live cluster.
 func NewAnalyzerFromObjects(objects []runtime.Object) *Analyzer {
+	//nolint:exhaustruct // rbacReader field is intentionally nil for object-based analysis
 	return &Analyzer{
 		objects: objects,
 	}
 }
 
-// SubjectPermissions represents permissions for a specific subject
+// SubjectPermissions represents permissions for a specific subject.
 type SubjectPermissions struct {
 	Subject     rbacv1.Subject    `json:"subject"`
 	Permissions []PermissionGrant `json:"permissions"`
 	RiskLevel   RiskLevel         `json:"risk_level"`
 }
 
-// PermissionGrant represents a specific permission grant
+// PermissionGrant represents a specific permission grant.
 type PermissionGrant struct {
 	RoleName    string               `json:"role_name"`
 	RoleKind    string               `json:"role_kind"`
@@ -50,7 +55,7 @@ type PermissionGrant struct {
 	BindingKind string               `json:"binding_kind"`
 }
 
-// PolicyRuleAnalysis provides detailed analysis of a policy rule
+// PolicyRuleAnalysis provides detailed analysis of a policy rule.
 type PolicyRuleAnalysis struct {
 	APIGroups        []string          `json:"api_groups"`
 	Resources        []string          `json:"resources"`
@@ -62,7 +67,7 @@ type PolicyRuleAnalysis struct {
 	VerbExplanations []VerbExplanation `json:"verb_explanations"`
 }
 
-// VerbExplanation provides plain English explanation of what a verb allows
+// VerbExplanation provides plain English explanation of what a verb allows.
 type VerbExplanation struct {
 	Verb        string `json:"verb"`
 	Explanation string `json:"explanation"`
@@ -70,14 +75,14 @@ type VerbExplanation struct {
 	Examples    string `json:"examples"`
 }
 
-// SecurityImpact describes the security implications of a rule
+// SecurityImpact describes the security implications of a rule.
 type SecurityImpact struct {
 	Level       RiskLevel `json:"level"`
 	Description string    `json:"description"`
 	Concerns    []string  `json:"concerns"`
 }
 
-// RiskLevel represents the risk level of permissions
+// RiskLevel represents the risk level of permissions.
 type RiskLevel string
 
 const (
@@ -85,9 +90,16 @@ const (
 	RiskLevelMedium   RiskLevel = "medium"
 	RiskLevelHigh     RiskLevel = "high"
 	RiskLevelCritical RiskLevel = "critical"
+
+	// Risk priority values.
+	riskPriorityCritical = 4
+	riskPriorityHigh     = 3
+	riskPriorityMedium   = 2
+	riskPriorityLow      = 1
+	riskPriorityDefault  = 0
 )
 
-// AnalyzePermissions analyzes all subjects and their permissions
+// AnalyzePermissions analyzes all subjects and their permissions.
 func (a *Analyzer) AnalyzePermissions(ctx context.Context) ([]SubjectPermissions, error) {
 	var allBindings []runtime.Object
 	var allRoles []runtime.Object
@@ -148,12 +160,13 @@ func (a *Analyzer) AnalyzePermissions(ctx context.Context) ([]SubjectPermissions
 	return result, nil
 }
 
-// fetchFromCluster fetches RBAC resources from the cluster
+// fetchFromCluster fetches RBAC resources from the cluster.
 func (a *Analyzer) fetchFromCluster(ctx context.Context) ([]runtime.Object, []runtime.Object, error) {
 	var bindings, roles []runtime.Object
 
 	// Fetch RoleBindings
-	roleBindings, err := a.rbacReader.RoleBindings("").List(ctx, metav1.ListOptions{})
+	roleBindings, err := a.rbacReader.RoleBindings("").
+		List(ctx, metav1.ListOptions{}) //nolint:exhaustruct // K8s API struct
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to fetch role bindings: %w", err)
 	}
@@ -162,7 +175,8 @@ func (a *Analyzer) fetchFromCluster(ctx context.Context) ([]runtime.Object, []ru
 	}
 
 	// Fetch ClusterRoleBindings
-	clusterRoleBindings, err := a.rbacReader.ClusterRoleBindings().List(ctx, metav1.ListOptions{})
+	clusterRoleBindings, err := a.rbacReader.ClusterRoleBindings().
+		List(ctx, metav1.ListOptions{}) //nolint:exhaustruct // K8s API struct
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to fetch cluster role bindings: %w", err)
 	}
@@ -171,7 +185,7 @@ func (a *Analyzer) fetchFromCluster(ctx context.Context) ([]runtime.Object, []ru
 	}
 
 	// Fetch Roles
-	roleList, err := a.rbacReader.Roles("").List(ctx, metav1.ListOptions{})
+	roleList, err := a.rbacReader.Roles("").List(ctx, metav1.ListOptions{}) //nolint:exhaustruct // K8s API struct
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to fetch roles: %w", err)
 	}
@@ -180,7 +194,8 @@ func (a *Analyzer) fetchFromCluster(ctx context.Context) ([]runtime.Object, []ru
 	}
 
 	// Fetch ClusterRoles
-	clusterRoleList, err := a.rbacReader.ClusterRoles().List(ctx, metav1.ListOptions{})
+	clusterRoleList, err := a.rbacReader.ClusterRoles().
+		List(ctx, metav1.ListOptions{}) //nolint:exhaustruct // K8s API struct
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to fetch cluster roles: %w", err)
 	}
@@ -191,7 +206,7 @@ func (a *Analyzer) fetchFromCluster(ctx context.Context) ([]runtime.Object, []ru
 	return bindings, roles, nil
 }
 
-// buildRoleMap creates a map for quick role lookup
+// buildRoleMap creates a map for quick role lookup.
 func (a *Analyzer) buildRoleMap(roles []runtime.Object) map[string]runtime.Object {
 	roleMap := make(map[string]runtime.Object)
 
@@ -209,7 +224,7 @@ func (a *Analyzer) buildRoleMap(roles []runtime.Object) map[string]runtime.Objec
 	return roleMap
 }
 
-// analyzeBinding analyzes a single binding and returns permissions for each subject
+// analyzeBinding analyzes a single binding and returns permissions for each subject.
 func (a *Analyzer) analyzeBinding(binding runtime.Object, roleMap map[string]runtime.Object) []*SubjectPermissions {
 	var result []*SubjectPermissions
 
@@ -223,8 +238,11 @@ func (a *Analyzer) analyzeBinding(binding runtime.Object, roleMap map[string]run
 	return result
 }
 
-// analyzeRoleBinding analyzes a RoleBinding
-func (a *Analyzer) analyzeRoleBinding(binding *rbacv1.RoleBinding, roleMap map[string]runtime.Object) []*SubjectPermissions {
+// analyzeRoleBinding analyzes a RoleBinding.
+func (a *Analyzer) analyzeRoleBinding(
+	binding *rbacv1.RoleBinding,
+	roleMap map[string]runtime.Object,
+) []*SubjectPermissions {
 	var result []*SubjectPermissions
 
 	// Find the referenced role
@@ -242,6 +260,7 @@ func (a *Analyzer) analyzeRoleBinding(binding *rbacv1.RoleBinding, roleMap map[s
 	if !exists {
 		// Role not found, create a placeholder
 		for _, subject := range binding.Subjects {
+			//nolint:exhaustruct // RiskLevel is calculated after all permissions are collected
 			result = append(result, &SubjectPermissions{
 				Subject: subject,
 				Permissions: []PermissionGrant{
@@ -273,6 +292,7 @@ func (a *Analyzer) analyzeRoleBinding(binding *rbacv1.RoleBinding, roleMap map[s
 
 	// Create permissions for each subject
 	for _, subject := range binding.Subjects {
+		//nolint:exhaustruct // RiskLevel is calculated after all permissions are collected
 		result = append(result, &SubjectPermissions{
 			Subject: subject,
 			Permissions: []PermissionGrant{
@@ -292,8 +312,11 @@ func (a *Analyzer) analyzeRoleBinding(binding *rbacv1.RoleBinding, roleMap map[s
 	return result
 }
 
-// analyzeClusterRoleBinding analyzes a ClusterRoleBinding
-func (a *Analyzer) analyzeClusterRoleBinding(binding *rbacv1.ClusterRoleBinding, roleMap map[string]runtime.Object) []*SubjectPermissions {
+// analyzeClusterRoleBinding analyzes a ClusterRoleBinding.
+func (a *Analyzer) analyzeClusterRoleBinding(
+	binding *rbacv1.ClusterRoleBinding,
+	roleMap map[string]runtime.Object,
+) []*SubjectPermissions {
 	var result []*SubjectPermissions
 
 	roleKey := fmt.Sprintf("ClusterRole//%s", binding.RoleRef.Name)
@@ -302,9 +325,11 @@ func (a *Analyzer) analyzeClusterRoleBinding(binding *rbacv1.ClusterRoleBinding,
 	if !exists {
 		// Role not found, create a placeholder
 		for _, subject := range binding.Subjects {
+			//nolint:exhaustruct // RiskLevel is calculated after all permissions are collected
 			result = append(result, &SubjectPermissions{
 				Subject: subject,
 				Permissions: []PermissionGrant{
+					//nolint:exhaustruct // Namespace is empty for cluster-wide permissions
 					{
 						RoleName:    binding.RoleRef.Name,
 						RoleKind:    binding.RoleRef.Kind,
@@ -319,14 +344,20 @@ func (a *Analyzer) analyzeClusterRoleBinding(binding *rbacv1.ClusterRoleBinding,
 		return result
 	}
 
-	clusterRole := role.(*rbacv1.ClusterRole)
+	clusterRole, ok := role.(*rbacv1.ClusterRole)
+	if !ok {
+		// This should not happen, but handle it gracefully
+		return result
+	}
 	analyzedRules := a.analyzeRules(clusterRole.Rules)
 
 	// Create permissions for each subject
 	for _, subject := range binding.Subjects {
+		//nolint:exhaustruct // RiskLevel is calculated after all permissions are collected
 		result = append(result, &SubjectPermissions{
 			Subject: subject,
 			Permissions: []PermissionGrant{
+				//nolint:exhaustruct // Namespace is empty for cluster-wide permissions
 				{
 					RoleName:    binding.RoleRef.Name,
 					RoleKind:    binding.RoleRef.Kind,
@@ -342,11 +373,12 @@ func (a *Analyzer) analyzeClusterRoleBinding(binding *rbacv1.ClusterRoleBinding,
 	return result
 }
 
-// analyzeRules analyzes policy rules and provides human-readable explanations
+// analyzeRules analyzes policy rules and provides human-readable explanations.
 func (a *Analyzer) analyzeRules(rules []rbacv1.PolicyRule) []PolicyRuleAnalysis {
 	var result []PolicyRuleAnalysis
 
 	for _, rule := range rules {
+		//nolint:exhaustruct // HumanReadable, SecurityImpact, and VerbExplanations are populated below
 		analysis := PolicyRuleAnalysis{
 			APIGroups:       rule.APIGroups,
 			Resources:       rule.Resources,
@@ -370,7 +402,7 @@ func (a *Analyzer) analyzeRules(rules []rbacv1.PolicyRule) []PolicyRuleAnalysis 
 	return result
 }
 
-// generateHumanReadableExplanation creates a human-readable explanation of the rule
+// generateHumanReadableExplanation creates a human-readable explanation of the rule.
 func (a *Analyzer) generateHumanReadableExplanation(rule rbacv1.PolicyRule) string {
 	var parts []string
 
@@ -389,21 +421,8 @@ func (a *Analyzer) generateHumanReadableExplanation(rule rbacv1.PolicyRule) stri
 	}
 
 	// Handle API groups
-	apiGroups := rule.APIGroups
-	if len(apiGroups) > 0 {
-		if len(apiGroups) == 1 && apiGroups[0] == "*" {
-			parts = append(parts, "in ALL API groups")
-		} else {
-			cleanGroups := make([]string, 0, len(apiGroups))
-			for _, group := range apiGroups {
-				if group == "" {
-					cleanGroups = append(cleanGroups, "core")
-				} else {
-					cleanGroups = append(cleanGroups, group)
-				}
-			}
-			parts = append(parts, fmt.Sprintf("in API groups: %s", strings.Join(cleanGroups, ", ")))
-		}
+	if apiGroupPart := a.formatAPIGroups(rule.APIGroups); apiGroupPart != "" {
+		parts = append(parts, apiGroupPart)
 	}
 
 	// Handle verbs
@@ -422,7 +441,7 @@ func (a *Analyzer) generateHumanReadableExplanation(rule rbacv1.PolicyRule) stri
 	return strings.Join(parts, " ")
 }
 
-// explainVerbs provides detailed explanations for each verb
+// explainVerbs provides detailed explanations for each verb.
 func (a *Analyzer) explainVerbs(verbs []string, resources []string) []VerbExplanation {
 	var explanations []VerbExplanation
 
@@ -529,7 +548,7 @@ func (a *Analyzer) explainVerbs(verbs []string, resources []string) []VerbExplan
 	return explanations
 }
 
-// isSensitiveResource checks if resources are considered sensitive
+// isSensitiveResource checks if resources are considered sensitive.
 func (a *Analyzer) isSensitiveResource(resources []string) bool {
 	sensitiveResources := map[string]bool{
 		"*":                               true,
@@ -613,7 +632,7 @@ func (a *Analyzer) isSensitiveResource(resources []string) bool {
 	return false
 }
 
-// escalateRiskLevel increases the risk level
+// escalateRiskLevel increases the risk level.
 func (a *Analyzer) escalateRiskLevel(currentLevel string) string {
 	switch currentLevel {
 	case "low":
@@ -627,7 +646,7 @@ func (a *Analyzer) escalateRiskLevel(currentLevel string) string {
 	}
 }
 
-// analyzeSecurityImpact analyzes the security implications of a rule
+// analyzeSecurityImpact analyzes the security implications of a rule.
 func (a *Analyzer) analyzeSecurityImpact(rule rbacv1.PolicyRule) SecurityImpact {
 	impact := SecurityImpact{
 		Level:       RiskLevelLow,
@@ -636,41 +655,21 @@ func (a *Analyzer) analyzeSecurityImpact(rule rbacv1.PolicyRule) SecurityImpact 
 	}
 
 	// Check for wildcards
-	hasWildcardVerb := false
-	hasWildcardResource := false
-	hasWildcardAPIGroup := false
-
-	for _, verb := range rule.Verbs {
-		if verb == "*" {
-			hasWildcardVerb = true
-			break
-		}
-	}
-
-	for _, resource := range rule.Resources {
-		if resource == "*" {
-			hasWildcardResource = true
-			break
-		}
-	}
-
-	for _, apiGroup := range rule.APIGroups {
-		if apiGroup == "*" {
-			hasWildcardAPIGroup = true
-			break
-		}
-	}
+	hasWildcardVerb := slices.Contains(rule.Verbs, "*")
+	hasWildcardResource := slices.Contains(rule.Resources, "*")
+	hasWildcardAPIGroup := slices.Contains(rule.APIGroups, "*")
 
 	// Analyze risk factors
-	if hasWildcardVerb && hasWildcardResource && hasWildcardAPIGroup {
+	switch {
+	case hasWildcardVerb && hasWildcardResource && hasWildcardAPIGroup:
 		impact.Level = RiskLevelCritical
 		impact.Description = "Complete cluster administrative access"
 		impact.Concerns = append(impact.Concerns, "Can perform any action on any resource")
-	} else if hasWildcardVerb {
+	case hasWildcardVerb:
 		impact.Level = RiskLevelHigh
 		impact.Description = "Unrestricted actions on specified resources"
 		impact.Concerns = append(impact.Concerns, "Can perform any action on these resources")
-	} else if hasWildcardResource {
+	case hasWildcardResource:
 		impact.Level = RiskLevelHigh
 		impact.Description = "Access to all resources with specified permissions"
 		impact.Concerns = append(impact.Concerns, "Can access any resource type")
@@ -728,14 +727,35 @@ func (a *Analyzer) calculateRiskLevel(permissions []PermissionGrant) RiskLevel {
 func (a *Analyzer) getRiskPriority(level RiskLevel) int {
 	switch level {
 	case RiskLevelCritical:
-		return 4
+		return riskPriorityCritical
 	case RiskLevelHigh:
-		return 3
+		return riskPriorityHigh
 	case RiskLevelMedium:
-		return 2
+		return riskPriorityMedium
 	case RiskLevelLow:
-		return 1
+		return riskPriorityLow
 	default:
-		return 0
+		return riskPriorityDefault
 	}
+}
+
+// formatAPIGroups formats API groups for human-readable output.
+func (a *Analyzer) formatAPIGroups(apiGroups []string) string {
+	if len(apiGroups) == 0 {
+		return ""
+	}
+
+	if len(apiGroups) == 1 && apiGroups[0] == "*" {
+		return "in ALL API groups"
+	}
+
+	cleanGroups := make([]string, 0, len(apiGroups))
+	for _, group := range apiGroups {
+		if group == "" {
+			cleanGroups = append(cleanGroups, "core")
+		} else {
+			cleanGroups = append(cleanGroups, group)
+		}
+	}
+	return fmt.Sprintf("in API groups: %s", strings.Join(cleanGroups, ", "))
 }

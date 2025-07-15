@@ -1,13 +1,15 @@
 package analyzer
 
 import (
+	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
 	rbacv1 "k8s.io/api/rbac/v1"
 )
 
-// PermissionMapper provides functionality to map and search permissions
+// PermissionMapper provides functionality to map and search permissions.
 type PermissionMapper struct {
 	permissions []SubjectPermissions
 }
@@ -19,7 +21,7 @@ func NewPermissionMapper(permissions []SubjectPermissions) *PermissionMapper {
 	}
 }
 
-// WhoCanDo finds subjects that can perform a specific action on resources
+// WhoCanDo finds subjects that can perform a specific action on resources.
 func (pm *PermissionMapper) WhoCanDo(verb, resource, apiGroup string) []PermissionMatch {
 	var matches []PermissionMatch
 
@@ -47,7 +49,7 @@ func (pm *PermissionMapper) WhoCanDo(verb, resource, apiGroup string) []Permissi
 	return matches
 }
 
-// WhatCanSubjectDo returns all permissions for a specific subject
+// WhatCanSubjectDo returns all permissions for a specific subject.
 func (pm *PermissionMapper) WhatCanSubjectDo(subjectKind, subjectName string) []SubjectPermissions {
 	var matches []SubjectPermissions
 
@@ -61,7 +63,7 @@ func (pm *PermissionMapper) WhatCanSubjectDo(subjectKind, subjectName string) []
 	return matches
 }
 
-// GetDangerousPermissions returns subjects with high-risk permissions
+// GetDangerousPermissions returns subjects with high-risk permissions.
 func (pm *PermissionMapper) GetDangerousPermissions() []DangerousPermission {
 	var dangerous []DangerousPermission
 
@@ -92,7 +94,7 @@ func (pm *PermissionMapper) GetDangerousPermissions() []DangerousPermission {
 	return dangerous
 }
 
-// GetPrivilegeEscalationPaths finds potential privilege escalation paths
+// GetPrivilegeEscalationPaths finds potential privilege escalation paths.
 func (pm *PermissionMapper) GetPrivilegeEscalationPaths() []EscalationPath {
 	var paths []EscalationPath
 
@@ -109,7 +111,7 @@ func (pm *PermissionMapper) GetPrivilegeEscalationPaths() []EscalationPath {
 	return paths
 }
 
-// GetResourceAccess shows who has access to specific resources
+// GetResourceAccess shows who has access to specific resources.
 func (pm *PermissionMapper) GetResourceAccess(resource, apiGroup string) ResourceAccessMap {
 	accessMap := ResourceAccessMap{
 		Resource: resource,
@@ -117,7 +119,19 @@ func (pm *PermissionMapper) GetResourceAccess(resource, apiGroup string) Resourc
 		Access:   make(map[string][]ResourceAccess),
 	}
 
-	verbs := []string{"get", "list", "watch", "create", "update", "patch", "delete", "bind", "escalate", "impersonate", "*"}
+	verbs := []string{
+		"get",
+		"list",
+		"watch",
+		"create",
+		"update",
+		"patch",
+		"delete",
+		"bind",
+		"escalate",
+		"impersonate",
+		"*",
+	}
 
 	for _, verb := range verbs {
 		matches := pm.WhoCanDo(verb, resource, apiGroup)
@@ -178,6 +192,7 @@ func (pm *PermissionMapper) matchesResource(ruleResources []string, targetResour
 	}
 	return false
 }
+
 func (pm *PermissionMapper) matchesAPIGroup(ruleAPIGroups []string, targetAPIGroup string) bool {
 	for _, apiGroup := range ruleAPIGroups {
 		if apiGroup == "*" || apiGroup == targetAPIGroup {
@@ -199,34 +214,37 @@ func (pm *PermissionMapper) getMatchReason(rule PolicyRuleAnalysis, verb, resour
 	var reasons []string
 
 	// Check if wildcard matches
-	for _, v := range rule.Verbs {
-		if v == "*" {
-			reasons = append(reasons, "wildcard verb permission")
-			break
-		}
+	if slices.Contains(rule.Verbs, "*") {
+		reasons = append(reasons, fmt.Sprintf("wildcard verb permission (requested: %s)", verb))
 	}
 
-	for _, r := range rule.Resources {
-		if r == "*" {
-			reasons = append(reasons, "wildcard resource permission")
-			break
-		}
+	if slices.Contains(rule.Resources, "*") {
+		reasons = append(reasons, fmt.Sprintf("wildcard resource permission (requested: %s)", resource))
 	}
 
-	for _, ag := range rule.APIGroups {
-		if ag == "*" {
-			reasons = append(reasons, "wildcard API group permission")
-			break
-		}
+	if slices.Contains(rule.APIGroups, "*") {
+		reasons = append(reasons, fmt.Sprintf("wildcard API group permission (requested: %s)", apiGroup))
 	}
 
 	if len(reasons) == 0 {
-		reasons = append(reasons, "explicit permission match")
+		// Build explicit match reason showing what matched
+		matchDetails := []string{}
+		if verb != "" {
+			matchDetails = append(matchDetails, fmt.Sprintf("verb=%s", verb))
+		}
+		if resource != "" {
+			matchDetails = append(matchDetails, fmt.Sprintf("resource=%s", resource))
+		}
+		if apiGroup != "" {
+			matchDetails = append(matchDetails, fmt.Sprintf("apiGroup=%s", apiGroup))
+		}
+		reasons = append(reasons, fmt.Sprintf("explicit permission match (%s)", strings.Join(matchDetails, ", ")))
 	}
 
 	return strings.Join(reasons, ", ")
 }
 
+//nolint:gocognit // Escalation risk analysis requires complex logic
 func (pm *PermissionMapper) analyzeEscalationRisk(subjectPerm SubjectPermissions) []EscalationRisk {
 	var risks []EscalationRisk
 
@@ -271,10 +289,10 @@ func (pm *PermissionMapper) analyzeEscalationRisk(subjectPerm SubjectPermissions
 					hasSecretsAccess = true
 				}
 				// Explicitly match known RBAC resource names including cluster-scoped
-				if resource == "role" || resource == "roles" || 
-					resource == "rolebinding" || resource == "rolebindings" || 
-					resource == "clusterrole" || resource == "clusterroles" || 
-					resource == "clusterrolebinding" || resource == "clusterrolebindings" || 
+				if resource == "role" || resource == "roles" ||
+					resource == "rolebinding" || resource == "rolebindings" ||
+					resource == "clusterrole" || resource == "clusterroles" ||
+					resource == "clusterrolebinding" || resource == "clusterrolebindings" ||
 					resource == "*" {
 					hasRBACAccess = true
 				}
@@ -297,15 +315,15 @@ func (pm *PermissionMapper) analyzeEscalationRisk(subjectPerm SubjectPermissions
 func (pm *PermissionMapper) getRiskPriority(level RiskLevel) int {
 	switch level {
 	case RiskLevelCritical:
-		return 4
+		return riskPriorityCritical
 	case RiskLevelHigh:
-		return 3
+		return riskPriorityHigh
 	case RiskLevelMedium:
-		return 2
+		return riskPriorityMedium
 	case RiskLevelLow:
-		return 1
+		return riskPriorityLow
 	default:
-		return 0
+		return riskPriorityDefault
 	}
 }
 
@@ -319,7 +337,7 @@ func (pm *PermissionMapper) convertSubject(subject rbacv1.Subject) SubjectRef {
 
 // Data structures for mapping results
 
-// PermissionMatch represents a subject that matches a permission query
+// PermissionMatch represents a subject that matches a permission query.
 type PermissionMatch struct {
 	Subject     SubjectRef         `json:"subject"`
 	Permission  PermissionGrant    `json:"permission"`
@@ -327,7 +345,7 @@ type PermissionMatch struct {
 	MatchReason string             `json:"match_reason"`
 }
 
-// DangerousPermission represents a high-risk permission
+// DangerousPermission represents a high-risk permission.
 type DangerousPermission struct {
 	Subject     SubjectRef         `json:"subject"`
 	Permission  PermissionGrant    `json:"permission"`
@@ -337,13 +355,13 @@ type DangerousPermission struct {
 	Concerns    []string           `json:"concerns"`
 }
 
-// EscalationPath represents potential privilege escalation
+// EscalationPath represents potential privilege escalation.
 type EscalationPath struct {
 	Subject SubjectRef       `json:"subject"`
 	Risks   []EscalationRisk `json:"risks"`
 }
 
-// EscalationRisk represents a specific escalation risk
+// EscalationRisk represents a specific escalation risk.
 type EscalationRisk struct {
 	Type        string             `json:"type"`
 	Description string             `json:"description"`
@@ -351,21 +369,21 @@ type EscalationRisk struct {
 	Rule        PolicyRuleAnalysis `json:"rule"`
 }
 
-// ResourceAccessMap shows who can access a resource
+// ResourceAccessMap shows who can access a resource.
 type ResourceAccessMap struct {
 	Resource string                      `json:"resource"`
 	APIGroup string                      `json:"api_group"`
 	Access   map[string][]ResourceAccess `json:"access"`
 }
 
-// ResourceAccess represents access to a resource
+// ResourceAccess represents access to a resource.
 type ResourceAccess struct {
 	Subject    SubjectRef      `json:"subject"`
 	Permission PermissionGrant `json:"permission"`
 	RiskLevel  RiskLevel       `json:"risk_level"`
 }
 
-// SubjectRef is a simplified subject reference
+// SubjectRef is a simplified subject reference.
 type SubjectRef struct {
 	Kind      string `json:"kind"`
 	Name      string `json:"name"`

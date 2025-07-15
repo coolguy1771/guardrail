@@ -8,8 +8,10 @@ import (
 	"github.com/spf13/viper"
 )
 
+//nolint:gochecknoglobals // CLI flags need to be global for Cobra
 var cfgFile string
 
+//nolint:gochecknoglobals // Cobra commands must be global
 var rootCmd = &cobra.Command{
 	Use:   "guardrail",
 	Short: "A Kubernetes RBAC validation tool",
@@ -17,13 +19,14 @@ var rootCmd = &cobra.Command{
 maintain secure, compliant, and well-structured RBAC configurations.`,
 }
 
+//nolint:gochecknoinits // Cobra requires init for command registration
 func init() {
 	cobra.OnInitialize(initConfig)
 
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.guardrail.yaml)")
 	rootCmd.PersistentFlags().StringP("output", "o", "text", "Output format (text, json, sarif)")
-	
-	viper.BindPFlag("output", rootCmd.PersistentFlags().Lookup("output"))
+
+	_ = viper.BindPFlag("output", rootCmd.PersistentFlags().Lookup("output"))
 }
 
 func initConfig() {

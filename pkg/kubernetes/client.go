@@ -3,19 +3,18 @@ package kubernetes
 import (
 	"context"
 	"fmt"
-	"path/filepath"
+
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/kubernetes"
 	rbacv1client "k8s.io/client-go/kubernetes/typed/rbac/v1"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/client-go/util/homedir"
 )
 
-// RBACReader provides read-only access to RBAC resources
+// RBACReader provides read-only access to RBAC resources.
 type RBACReader interface {
 	// Roles returns a read-only interface for roles
 	Roles(namespace string) rbacv1client.RoleInterface
@@ -27,7 +26,7 @@ type RBACReader interface {
 	ClusterRoleBindings() rbacv1client.ClusterRoleBindingInterface
 }
 
-// rbacReaderImpl implements the RBACReader interface
+// rbacReaderImpl implements the RBACReader interface.
 type rbacReaderImpl struct {
 	rbacClient rbacv1client.RbacV1Interface
 }
@@ -48,7 +47,7 @@ func (r *rbacReaderImpl) ClusterRoleBindings() rbacv1client.ClusterRoleBindingIn
 	return r.rbacClient.ClusterRoleBindings()
 }
 
-// Client provides methods to fetch RBAC resources from a Kubernetes cluster
+// Client provides methods to fetch RBAC resources from a Kubernetes cluster.
 type Client struct {
 	clientset kubernetes.Interface
 }
@@ -82,40 +81,19 @@ func NewClientFromConfig(config *rest.Config) (*Client, error) {
 	}, nil
 }
 
-// GetRBACReader returns a read-only interface for RBAC operations
+// GetRBACReader returns a read-only interface for RBAC operations.
 func (c *Client) GetRBACReader() RBACReader {
 	return &rbacReaderImpl{
 		rbacClient: c.clientset.RbacV1(),
 	}
 }
 
-// getConfig returns a Kubernetes REST configuration using the provided kubeconfig path, or attempts in-cluster and default kubeconfig locations if none is specified.
-func getConfig(kubeconfig string) (*rest.Config, error) {
-	// If running in-cluster
-	if kubeconfig == "" {
-		config, err := rest.InClusterConfig()
-		if err == nil {
-			return config, nil
-		}
-		// If in-cluster config fails, try default kubeconfig
-		if home := homedir.HomeDir(); home != "" {
-			kubeconfig = filepath.Join(home, ".kube", "config")
-		}
-	}
-
-	// Use the kubeconfig file
-	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
-	if err != nil {
-		return nil, err
-	}
-
-	return config, nil
-}
-
 // getConfigWithContext loads a Kubernetes REST config from the specified kubeconfig file, optionally overriding the current context.
 // Returns the configured *rest.Config or an error if loading fails.
 func getConfigWithContext(kubeconfig, contextName string) (*rest.Config, error) {
+	//nolint:exhaustruct // Only ExplicitPath is needed for kubeconfig loading
 	loadingRules := &clientcmd.ClientConfigLoadingRules{ExplicitPath: kubeconfig}
+	//nolint:exhaustruct // Only CurrentContext is optionally set below
 	configOverrides := &clientcmd.ConfigOverrides{}
 	if contextName != "" {
 		configOverrides.CurrentContext = contextName
@@ -124,7 +102,7 @@ func getConfigWithContext(kubeconfig, contextName string) (*rest.Config, error) 
 	return clientConfig.ClientConfig()
 }
 
-// FetchAllRBACResources fetches all RBAC resources from the cluster
+// FetchAllRBACResources fetches all RBAC resources from the cluster.
 func (c *Client) FetchAllRBACResources(ctx context.Context) ([]runtime.Object, error) {
 	var resources []runtime.Object
 
@@ -159,11 +137,13 @@ func (c *Client) FetchAllRBACResources(ctx context.Context) ([]runtime.Object, e
 	return resources, nil
 }
 
-// FetchRoles fetches roles from a namespace (or all namespaces if namespace is empty)
+// FetchRoles fetches roles from a namespace (or all namespaces if namespace is empty).
 func (c *Client) FetchRoles(ctx context.Context, namespace string) ([]runtime.Object, error) {
 	var resources []runtime.Object
 
-	roleList, err := c.clientset.RbacV1().Roles(namespace).List(ctx, metav1.ListOptions{})
+	roleList, err := c.clientset.RbacV1().
+		Roles(namespace).
+		List(ctx, metav1.ListOptions{}) //nolint:exhaustruct // K8s API struct
 	if err != nil {
 		return nil, err
 	}
@@ -175,11 +155,13 @@ func (c *Client) FetchRoles(ctx context.Context, namespace string) ([]runtime.Ob
 	return resources, nil
 }
 
-// FetchRoleBindings fetches role bindings from a namespace (or all namespaces if namespace is empty)
+// FetchRoleBindings fetches role bindings from a namespace (or all namespaces if namespace is empty).
 func (c *Client) FetchRoleBindings(ctx context.Context, namespace string) ([]runtime.Object, error) {
 	var resources []runtime.Object
 
-	roleBindingList, err := c.clientset.RbacV1().RoleBindings(namespace).List(ctx, metav1.ListOptions{})
+	roleBindingList, err := c.clientset.RbacV1().
+		RoleBindings(namespace).
+		List(ctx, metav1.ListOptions{}) //nolint:exhaustruct // K8s API struct
 	if err != nil {
 		return nil, err
 	}
@@ -191,11 +173,13 @@ func (c *Client) FetchRoleBindings(ctx context.Context, namespace string) ([]run
 	return resources, nil
 }
 
-// FetchClusterRoles fetches all cluster roles
+// FetchClusterRoles fetches all cluster roles.
 func (c *Client) FetchClusterRoles(ctx context.Context) ([]runtime.Object, error) {
 	var resources []runtime.Object
 
-	clusterRoleList, err := c.clientset.RbacV1().ClusterRoles().List(ctx, metav1.ListOptions{})
+	clusterRoleList, err := c.clientset.RbacV1().
+		ClusterRoles().
+		List(ctx, metav1.ListOptions{}) //nolint:exhaustruct // K8s API struct
 	if err != nil {
 		return nil, err
 	}
@@ -207,11 +191,13 @@ func (c *Client) FetchClusterRoles(ctx context.Context) ([]runtime.Object, error
 	return resources, nil
 }
 
-// FetchClusterRoleBindings fetches all cluster role bindings
+// FetchClusterRoleBindings fetches all cluster role bindings.
 func (c *Client) FetchClusterRoleBindings(ctx context.Context) ([]runtime.Object, error) {
 	var resources []runtime.Object
 
-	clusterRoleBindingList, err := c.clientset.RbacV1().ClusterRoleBindings().List(ctx, metav1.ListOptions{})
+	clusterRoleBindingList, err := c.clientset.RbacV1().
+		ClusterRoleBindings().
+		List(ctx, metav1.ListOptions{}) //nolint:exhaustruct // K8s API struct
 	if err != nil {
 		return nil, err
 	}
@@ -223,22 +209,30 @@ func (c *Client) FetchClusterRoleBindings(ctx context.Context) ([]runtime.Object
 	return resources, nil
 }
 
-// FetchSpecificRole fetches a specific role
+// FetchSpecificRole fetches a specific role.
 func (c *Client) FetchSpecificRole(ctx context.Context, namespace, name string) (*rbacv1.Role, error) {
-	return c.clientset.RbacV1().Roles(namespace).Get(ctx, name, metav1.GetOptions{})
+	return c.clientset.RbacV1().
+		Roles(namespace).
+		Get(ctx, name, metav1.GetOptions{}) //nolint:exhaustruct // K8s API struct
 }
 
-// FetchSpecificRoleBinding fetches a specific role binding
+// FetchSpecificRoleBinding fetches a specific role binding.
 func (c *Client) FetchSpecificRoleBinding(ctx context.Context, namespace, name string) (*rbacv1.RoleBinding, error) {
-	return c.clientset.RbacV1().RoleBindings(namespace).Get(ctx, name, metav1.GetOptions{})
+	return c.clientset.RbacV1().
+		RoleBindings(namespace).
+		Get(ctx, name, metav1.GetOptions{}) //nolint:exhaustruct // K8s API struct
 }
 
-// FetchSpecificClusterRole fetches a specific cluster role
+// FetchSpecificClusterRole fetches a specific cluster role.
 func (c *Client) FetchSpecificClusterRole(ctx context.Context, name string) (*rbacv1.ClusterRole, error) {
-	return c.clientset.RbacV1().ClusterRoles().Get(ctx, name, metav1.GetOptions{})
+	return c.clientset.RbacV1().
+		ClusterRoles().
+		Get(ctx, name, metav1.GetOptions{}) //nolint:exhaustruct // K8s API struct
 }
 
-// FetchSpecificClusterRoleBinding fetches a specific cluster role binding
+// FetchSpecificClusterRoleBinding fetches a specific cluster role binding.
 func (c *Client) FetchSpecificClusterRoleBinding(ctx context.Context, name string) (*rbacv1.ClusterRoleBinding, error) {
-	return c.clientset.RbacV1().ClusterRoleBindings().Get(ctx, name, metav1.GetOptions{})
+	return c.clientset.RbacV1().
+		ClusterRoleBindings().
+		Get(ctx, name, metav1.GetOptions{}) //nolint:exhaustruct // K8s API struct
 }

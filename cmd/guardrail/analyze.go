@@ -3,19 +3,24 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/coolguy1771/guardrail/pkg/analyzer"
-	"github.com/coolguy1771/guardrail/pkg/kubernetes"
-	"github.com/coolguy1771/guardrail/pkg/parser"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"k8s.io/apimachinery/pkg/runtime"
+
+	"github.com/coolguy1771/guardrail/pkg/analyzer"
+	"github.com/coolguy1771/guardrail/pkg/kubernetes"
+	"github.com/coolguy1771/guardrail/pkg/parser"
 )
 
+const outputSeparatorLength = 80
+
+//nolint:gochecknoglobals // CLI flags need to be global for Cobra
 var (
 	analyzeFile      string
 	analyzeDirectory string
@@ -28,6 +33,7 @@ var (
 	noColor          bool
 )
 
+//nolint:gochecknoglobals // Cobra commands must be global
 var analyzeCmd = &cobra.Command{
 	Use:   "analyze",
 	Short: "Analyze RBAC permissions and explain what subjects can do",
@@ -38,6 +44,8 @@ explanations of what each permission allows.`,
 }
 
 // init registers the 'analyze' CLI command and its flags, and binds them to Viper configuration keys for RBAC permission analysis.
+//
+//nolint:gochecknoinits // Cobra requires init for command registration
 func init() {
 	rootCmd.AddCommand(analyzeCmd)
 
@@ -46,89 +54,78 @@ func init() {
 	analyzeCmd.Flags().BoolVarP(&analyzeCluster, "cluster", "c", false, "Analyze live cluster RBAC")
 	analyzeCmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to kubeconfig file")
 	analyzeCmd.Flags().StringVar(&kubectx, "context", "", "Kubernetes context to use")
-	analyzeCmd.Flags().StringVarP(&subject, "subject", "s", "", "Filter by subject name (user, group, or service account)")
+	analyzeCmd.Flags().
+		StringVarP(&subject, "subject", "s", "", "Filter by subject name (user, group, or service account)")
 	analyzeCmd.Flags().BoolVar(&showRoles, "show-roles", false, "Show detailed role information")
 	analyzeCmd.Flags().StringVar(&riskLevel, "risk-level", "", "Filter by risk level (low, medium, high, critical)")
 	analyzeCmd.Flags().BoolVar(&noColor, "no-color", false, "Disable colored output")
 
-	viper.BindPFlag("analyze.file", analyzeCmd.Flags().Lookup("file"))
-	viper.BindPFlag("analyze.directory", analyzeCmd.Flags().Lookup("dir"))
-	viper.BindPFlag("analyze.cluster", analyzeCmd.Flags().Lookup("cluster"))
-	viper.BindPFlag("analyze.kubeconfig", analyzeCmd.Flags().Lookup("kubeconfig"))
-	viper.BindPFlag("analyze.context", analyzeCmd.Flags().Lookup("context"))
-	viper.BindPFlag("analyze.subject", analyzeCmd.Flags().Lookup("subject"))
-	viper.BindPFlag("analyze.show-roles", analyzeCmd.Flags().Lookup("show-roles"))
-	viper.BindPFlag("analyze.risk-level", analyzeCmd.Flags().Lookup("risk-level"))
-	viper.BindPFlag("analyze.no-color", analyzeCmd.Flags().Lookup("no-color"))
+	_ = viper.BindPFlag("analyze.file", analyzeCmd.Flags().Lookup("file"))
+	_ = viper.BindPFlag("analyze.directory", analyzeCmd.Flags().Lookup("dir"))
+	_ = viper.BindPFlag("analyze.cluster", analyzeCmd.Flags().Lookup("cluster"))
+	_ = viper.BindPFlag("analyze.kubeconfig", analyzeCmd.Flags().Lookup("kubeconfig"))
+	_ = viper.BindPFlag("analyze.context", analyzeCmd.Flags().Lookup("context"))
+	_ = viper.BindPFlag("analyze.subject", analyzeCmd.Flags().Lookup("subject"))
+	_ = viper.BindPFlag("analyze.show-roles", analyzeCmd.Flags().Lookup("show-roles"))
+	_ = viper.BindPFlag("analyze.risk-level", analyzeCmd.Flags().Lookup("risk-level"))
+	_ = viper.BindPFlag("analyze.no-color", analyzeCmd.Flags().Lookup("no-color"))
 }
 
 // runAnalyze executes the RBAC analysis command, processing input from a file, directory, or live Kubernetes cluster, and outputs permission analysis results in the specified format.
 // It validates input options, initializes the analyzer, performs permission analysis, applies subject and risk level filters, and outputs results as JSON or human-readable text.
 // Returns an error if input validation, parsing, analysis, or output fails.
-func runAnalyze(cmd *cobra.Command, args []string) error {
-	file := viper.GetString("analyze.file")
-	directory := viper.GetString("analyze.directory")
-	cluster := viper.GetBool("analyze.cluster")
-	kubeconfig := viper.GetString("analyze.kubeconfig")
-	kubectx := viper.GetString("analyze.context")
-	subject := viper.GetString("analyze.subject")
-	showRoles := viper.GetBool("analyze.show-roles")
-	riskLevel := viper.GetString("analyze.risk-level")
+func runAnalyze(_ *cobra.Command, _ []string) error {
+	fileArg := viper.GetString("analyze.file")
+	directoryArg := viper.GetString("analyze.directory")
+	clusterArg := viper.GetBool("analyze.cluster")
+	kubeconfigArg := viper.GetString("analyze.kubeconfig")
+	kubectxArg := viper.GetString("analyze.context")
+	subjectArg := viper.GetString("analyze.subject")
+	showRolesArg := viper.GetBool("analyze.show-roles")
+	riskLevelArg := viper.GetString("analyze.risk-level")
 	outputFormat := viper.GetString("output")
 
 	// Validate input options
 	inputCount := 0
-	if file != "" {
+	if fileArg != "" {
 		inputCount++
 	}
-	if directory != "" {
+	if directoryArg != "" {
 		inputCount++
 	}
-	if cluster {
+	if clusterArg {
 		inputCount++
 	}
 
 	if inputCount == 0 {
-		return fmt.Errorf("must specify one of --file, --dir, or --cluster")
+		return errors.New("must specify one of --file, --dir, or --cluster")
 	}
 	if inputCount > 1 {
-		return fmt.Errorf("cannot specify multiple input sources")
+		return errors.New("cannot specify multiple input sources")
 	}
 
 	var a *analyzer.Analyzer
 	var err error
 
-	if cluster {
+	if clusterArg {
 		// Analyze live cluster
-		client, err := kubernetes.NewClient(kubeconfig, kubectx)
+		a, err = createClusterAnalyzer(kubeconfigArg, kubectxArg)
 		if err != nil {
-			return fmt.Errorf("failed to create kubernetes client: %w", err)
+			return err
 		}
-		a = analyzer.NewAnalyzer(client.GetRBACReader())
 	} else {
 		// Analyze files
-		var objects []runtime.Object
-
-		if file != "" {
-			objects, err = parseFile(file)
-			if err != nil {
-				return fmt.Errorf("failed to parse file: %w", err)
-			}
-		} else {
-			objects, err = parseDirectory(directory)
-			if err != nil {
-				return fmt.Errorf("failed to parse directory: %w", err)
-			}
+		a, err = createFileAnalyzer(fileArg, directoryArg)
+		if err != nil {
+			return err
 		}
-
-		a = analyzer.NewAnalyzerFromObjects(objects)
 	}
 
 	// Analyze permissions
 	ctx := context.Background()
-	if kubectx != "" {
-		// TODO: Set Kubernetes context
-	}
+	// Note: The kubectx flag value is already passed to kubernetes.NewClient() above,
+	// which handles context switching internally. This block is kept for potential
+	// future use where we might need to pass context-specific options.
 
 	permissions, err := a.AnalyzePermissions(ctx)
 	if err != nil {
@@ -136,15 +133,44 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 	}
 
 	// Apply filters
-	permissions = filterPermissions(permissions, subject, riskLevel)
+	permissions = filterPermissions(permissions, subjectArg, riskLevelArg)
 
 	// Output results
 	switch outputFormat {
 	case "json":
 		return outputJSON(permissions)
 	default:
-		return outputHumanReadable(permissions, showRoles)
+		return outputHumanReadable(permissions, showRolesArg)
 	}
+}
+
+// createClusterAnalyzer creates an analyzer for live cluster analysis.
+func createClusterAnalyzer(kubeconfigArg, kubectxArg string) (*analyzer.Analyzer, error) {
+	client, err := kubernetes.NewClient(kubeconfigArg, kubectxArg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create kubernetes client: %w", err)
+	}
+	return analyzer.NewAnalyzer(client.GetRBACReader()), nil
+}
+
+// createFileAnalyzer creates an analyzer for file-based analysis.
+func createFileAnalyzer(fileArg, directoryArg string) (*analyzer.Analyzer, error) {
+	var objects []runtime.Object
+	var err error
+
+	if fileArg != "" {
+		objects, err = parseFile(fileArg)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse file: %w", err)
+		}
+	} else {
+		objects, err = parseDirectory(directoryArg)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse directory: %w", err)
+		}
+	}
+
+	return analyzer.NewAnalyzerFromObjects(objects), nil
 }
 
 // parseFile parses a Kubernetes YAML manifest file and returns the contained runtime objects.
@@ -166,7 +192,8 @@ func parseDirectory(directory string) ([]runtime.Object, error) {
 			return err
 		}
 		if !info.IsDir() && (filepath.Ext(path) == ".yaml" || filepath.Ext(path) == ".yml") {
-			objects, err := p.ParseFile(path)
+			var objects []runtime.Object
+			objects, err = p.ParseFile(path)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: Failed to parse %s: %v\n", path, err)
 				failedParses++
@@ -186,7 +213,10 @@ func parseDirectory(directory string) ([]runtime.Object, error) {
 
 // filterPermissions returns a filtered slice of SubjectPermissions based on the specified subject name and risk level.
 // Only permissions matching both filters (if provided) are included in the result.
-func filterPermissions(permissions []analyzer.SubjectPermissions, subjectFilter, riskFilter string) []analyzer.SubjectPermissions {
+func filterPermissions(
+	permissions []analyzer.SubjectPermissions,
+	subjectFilter, riskFilter string,
+) []analyzer.SubjectPermissions {
 	var filtered []analyzer.SubjectPermissions
 
 	for _, perm := range permissions {
@@ -215,7 +245,7 @@ func filterPermissions(permissions []analyzer.SubjectPermissions, subjectFilter,
 func outputJSON(permissions []analyzer.SubjectPermissions) error {
 	encoder := json.NewEncoder(os.Stdout)
 	encoder.SetIndent("", "  ")
-	return encoder.Encode(map[string]interface{}{
+	return encoder.Encode(map[string]any{
 		"subjects": permissions,
 		"summary":  getSummary(permissions),
 	})
@@ -223,6 +253,8 @@ func outputJSON(permissions []analyzer.SubjectPermissions) error {
 
 // outputHumanReadable prints a human-readable summary and detailed analysis of RBAC permissions for each subject, including risk distribution and optional rule details.
 // Returns an error only if output fails.
+//
+//nolint:forbidigo // CLI output needs fmt.Print
 func outputHumanReadable(permissions []analyzer.SubjectPermissions, showRoles bool) error {
 	if len(permissions) == 0 {
 		fmt.Println("No RBAC permissions found matching the criteria.")
@@ -244,7 +276,7 @@ func outputHumanReadable(permissions []analyzer.SubjectPermissions, showRoles bo
 	// Print detailed analysis for each subject
 	for i, subjectPerm := range permissions {
 		if i > 0 {
-			fmt.Printf("\n%s\n\n", strings.Repeat("─", 80))
+			fmt.Printf("\n%s\n\n", strings.Repeat("─", outputSeparatorLength))
 		}
 
 		printSubjectAnalysis(subjectPerm, showRoles)
@@ -256,6 +288,8 @@ func outputHumanReadable(permissions []analyzer.SubjectPermissions, showRoles bo
 // printSubjectAnalysis displays a detailed analysis of a subject's permissions, including risk level, roles, and optionally detailed rule information.
 // It prints the subject's kind, name, namespace, risk level, and a breakdown of each permission with associated roles and bindings.
 // If showRoles is true, detailed permission rules are printed; otherwise, a summary is shown.
+//
+//nolint:forbidigo // CLI output needs fmt.Print
 func printSubjectAnalysis(subjectPerm analyzer.SubjectPermissions, showRoles bool) {
 	// Print subject header
 	riskIcon := getRiskIcon(subjectPerm.RiskLevel)
@@ -290,6 +324,8 @@ func printSubjectAnalysis(subjectPerm analyzer.SubjectPermissions, showRoles boo
 }
 
 // printRuleAnalysis displays a detailed, human-readable analysis of a policy rule, including its description, risk level, concerns, and allowed actions with explanations and examples, using indentation and optional color coding for clarity.
+//
+//nolint:forbidigo // CLI output needs fmt.Print
 func printRuleAnalysis(rule analyzer.PolicyRuleAnalysis, indent string) {
 	fmt.Printf("%s• %s\n", indent, rule.HumanReadable)
 	fmt.Printf("%s  Risk: %s\n", indent, strings.ToUpper(string(rule.SecurityImpact.Level)))
@@ -321,7 +357,8 @@ func generatePermissionSummary(rules []analyzer.PolicyRuleAnalysis) string {
 	highRiskCount := 0
 
 	for _, rule := range rules {
-		if rule.SecurityImpact.Level == analyzer.RiskLevelHigh || rule.SecurityImpact.Level == analyzer.RiskLevelCritical {
+		if rule.SecurityImpact.Level == analyzer.RiskLevelHigh ||
+			rule.SecurityImpact.Level == analyzer.RiskLevelCritical {
 			highRiskCount++
 		}
 	}
@@ -405,6 +442,7 @@ type AnalysisSummary struct {
 // getSummary aggregates the total number of subjects and counts of each risk level from the provided permissions.
 // It returns an AnalysisSummary with these aggregated values.
 func getSummary(permissions []analyzer.SubjectPermissions) AnalysisSummary {
+	//nolint:exhaustruct // Risk counts are calculated in the loop below
 	summary := AnalysisSummary{
 		TotalSubjects: len(permissions),
 	}
