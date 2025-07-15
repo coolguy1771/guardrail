@@ -117,7 +117,7 @@ func (pm *PermissionMapper) GetResourceAccess(resource, apiGroup string) Resourc
 		Access:   make(map[string][]ResourceAccess),
 	}
 
-	verbs := []string{"get", "list", "watch", "create", "update", "patch", "delete", "*"}
+	verbs := []string{"get", "list", "watch", "create", "update", "patch", "delete", "bind", "escalate", "impersonate", "*"}
 
 	for _, verb := range verbs {
 		matches := pm.WhoCanDo(verb, resource, apiGroup)
