@@ -327,10 +327,11 @@ rules:
 			buf.ReadFrom(r)
 			output := buf.String()
 
-			// Check for high severity finding (should exit with code 1)
-			// Note: In real execution, os.Exit(1) would be called
-			// For testing, we just check the error is nil (findings were processed)
-			testutil.AssertNil(t, err, "runValidate should not return error")
+			// Check for high severity finding (now returns error instead of os.Exit)
+			testutil.AssertNotNil(t, err, "runValidate should return error for high severity findings")
+			if err != nil && !strings.Contains(err.Error(), "validation failed") {
+				t.Errorf("expected validation failed error, got: %v", err)
+			}
 
 			// Verify output format
 			switch format {
@@ -339,8 +340,8 @@ rules:
 					t.Error("expected JSON format with 'findings' field")
 				}
 			case "sarif":
-				if !strings.Contains(output, `"version":"2.1.0"`) {
-					t.Error("expected SARIF format with version 2.1.0")
+				if !strings.Contains(output, `"version":"2.1.0"`) && !strings.Contains(output, `"version": "2.1.0"`) {
+					t.Errorf("expected SARIF format with version 2.1.0, got: %s", output)
 				}
 			case "text":
 				if !strings.Contains(output, "RBAC001") {
