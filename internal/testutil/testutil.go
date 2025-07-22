@@ -1,6 +1,7 @@
 package testutil
 
 import (
+	"fmt"
 	"testing"
 
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -75,6 +76,8 @@ func AddRule(obj runtime.Object, rule rbacv1.PolicyRule) {
 		v.Rules = append(v.Rules, rule)
 	case *rbacv1.ClusterRole:
 		v.Rules = append(v.Rules, rule)
+	default:
+		panic(fmt.Sprintf("AddRule: unsupported object type %T", obj))
 	}
 }
 
@@ -85,6 +88,8 @@ func AddSubject(obj runtime.Object, subject rbacv1.Subject) {
 		v.Subjects = append(v.Subjects, subject)
 	case *rbacv1.ClusterRoleBinding:
 		v.Subjects = append(v.Subjects, subject)
+	default:
+		panic(fmt.Sprintf("AddSubject: unsupported object type %T", obj))
 	}
 }
 

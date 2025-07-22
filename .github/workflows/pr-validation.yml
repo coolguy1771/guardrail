@@ -101,12 +101,20 @@ jobs:
             xargs -n1 dirname | \
             grep -E '^(cmd|pkg|internal)/' | \
             sort -u | \
-            sed 's|^|./|' | \
-            tr '\n' ' ')
+            sed 's|^|./|')
           
           if [ -n "$PACKAGES" ]; then
-            echo "Testing changed packages: $PACKAGES"
-            go test -v -race -covermode=atomic -coverprofile=coverage.out $PACKAGES/...
+            echo "Testing changed packages:"
+            echo "$PACKAGES"
+            
+            # Convert packages to a space-separated list with /... appended to each
+            PACKAGE_LIST=""
+            for pkg in $PACKAGES; do
+              PACKAGE_LIST="$PACKAGE_LIST $pkg/..."
+            done
+            
+            # Run tests on all changed packages
+            go test -v -race -covermode=atomic -coverprofile=coverage.out $PACKAGE_LIST
           fi
 
       - name: Check coverage on changed code

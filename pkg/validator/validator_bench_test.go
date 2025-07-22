@@ -20,7 +20,7 @@ func BenchmarkValidateRole(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		v.ValidateObject(role)
+		v.Validate(role)
 	}
 }
 
@@ -30,7 +30,7 @@ func BenchmarkValidateMultipleObjects(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		v.ValidateObjects(objects)
+		v.ValidateAll(objects)
 	}
 }
 
@@ -49,7 +49,7 @@ func BenchmarkValidateComplexRules(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		v.ValidateObject(role)
+		v.Validate(role)
 	}
 }
 
@@ -67,7 +67,7 @@ func BenchmarkWildcardDetection(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		for _, role := range roles {
-			v.ValidateObject(role)
+			v.Validate(role)
 		}
 	}
 }

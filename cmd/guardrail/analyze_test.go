@@ -303,20 +303,13 @@ rules:
 	viper.Reset()
 	viper.Set("analyze.file", roleFile)
 
-	// Capture output
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
+	// Create command with output buffer
+	cmd := &cobra.Command{}
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 
-	err = runAnalyze(nil, nil)
-
-	// Restore stdout
-	w.Close()
-	os.Stdout = oldStdout
-
-	// Read output
-	buf := new(bytes.Buffer)
-	buf.ReadFrom(r)
+	err = runAnalyze(cmd, nil)
 	output := buf.String()
 
 	testutil.AssertNil(t, err, "runAnalyze should not return error")

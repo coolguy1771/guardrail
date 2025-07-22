@@ -152,7 +152,9 @@ func TestInitConfig(t *testing.T) {
 
 		// Read output
 		buf := new(bytes.Buffer)
-		buf.ReadFrom(r)
+		if _, err := buf.ReadFrom(r); err != nil {
+			t.Fatalf("failed to read from pipe: %v", err)
+		}
 		output := buf.String()
 
 		// Check that config was loaded
@@ -248,6 +250,7 @@ validate:
 
 			// Reset viper
 			viper.Reset()
+			defer viper.Reset() // Ensure viper is reset even if test fails
 			viper.SetConfigFile(configPath)
 
 			// Read config
@@ -266,6 +269,7 @@ validate:
 func TestEnvironmentVariables(t *testing.T) {
 	// Test that environment variables override config
 	viper.Reset()
+	defer viper.Reset() // Ensure viper is reset even if test fails
 
 	// Set env var
 	os.Setenv("GUARDRAIL_OUTPUT", "sarif")
