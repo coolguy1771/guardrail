@@ -760,8 +760,13 @@ func (a *Analyzer) formatAPIGroups(apiGroups []string) string {
 	return fmt.Sprintf("in API groups: %s", strings.Join(cleanGroups, ", "))
 }
 
-// filterBySubject returns only the permissions for subjects matching the given name.
-func filterBySubject(permissions []SubjectPermissions, subjectName string) []SubjectPermissions {
+// FilterBySubject returns only the permissions for subjects matching the given name.
+// If subjectName is empty, it returns an empty slice.
+func FilterBySubject(permissions []SubjectPermissions, subjectName string) []SubjectPermissions {
+	if subjectName == "" {
+		return []SubjectPermissions{}
+	}
+	
 	var filtered []SubjectPermissions
 	for _, perm := range permissions {
 		if perm.Subject.Name == subjectName {
@@ -771,8 +776,13 @@ func filterBySubject(permissions []SubjectPermissions, subjectName string) []Sub
 	return filtered
 }
 
-// filterByRiskLevel returns only the permissions matching the given risk level.
-func filterByRiskLevel(permissions []SubjectPermissions, riskLevel RiskLevel) []SubjectPermissions {
+// FilterByRiskLevel returns only the permissions matching the given risk level.
+// If permissions slice is nil or empty, it returns an empty slice.
+func FilterByRiskLevel(permissions []SubjectPermissions, riskLevel RiskLevel) []SubjectPermissions {
+	if len(permissions) == 0 {
+		return []SubjectPermissions{}
+	}
+	
 	var filtered []SubjectPermissions
 	for _, perm := range permissions {
 		if perm.RiskLevel == riskLevel {

@@ -28,17 +28,17 @@ func TestRootCommand(t *testing.T) {
 			name: "help flag",
 			args: []string{"guardrail", "--help"},
 			checkOutput: func(t *testing.T, output string) {
-				if !strings.Contains(output, "A Kubernetes RBAC validation tool") {
-					t.Error("expected help text")
+				if !strings.Contains(output, "Kubernetes RBAC validation tool") {
+					t.Errorf("expected help text, got: %s", output)
 				}
 				if !strings.Contains(output, "Available Commands:") {
-					t.Error("expected commands list")
+					t.Errorf("expected commands list, got: %s", output)
 				}
 				if !strings.Contains(output, "validate") {
-					t.Error("expected validate command")
+					t.Errorf("expected validate command, got: %s", output)
 				}
 				if !strings.Contains(output, "analyze") {
-					t.Error("expected analyze command")
+					t.Errorf("expected analyze command, got: %s", output)
 				}
 			},
 		},
@@ -58,7 +58,7 @@ func TestRootCommand(t *testing.T) {
 			checkOutput: func(t *testing.T, output string) {
 				// Should still show help
 				if !strings.Contains(output, "Validate RBAC manifests") {
-					t.Error("expected validate help")
+					t.Errorf("expected validate help, got: %s", output)
 				}
 			},
 		},
@@ -71,11 +71,6 @@ func TestRootCommand(t *testing.T) {
 
 			// Capture output
 			var buf bytes.Buffer
-			rootCmd.SetOut(&buf)
-			rootCmd.SetErr(&buf)
-
-			// Set args
-			os.Args = tt.args
 
 			// Re-initialize root command
 			rootCmd = &cobra.Command{
@@ -99,6 +94,13 @@ maintain secure, compliant, and well-structured RBAC configurations.`,
 				Short: "Analyze RBAC permissions and explain what subjects can do",
 			}
 			rootCmd.AddCommand(validateCmd, analyzeCmd)
+			
+			// Set output streams
+			rootCmd.SetOut(&buf)
+			rootCmd.SetErr(&buf)
+			
+			// Set command line arguments (skip the first arg which is the binary name)
+			rootCmd.SetArgs(tt.args[1:])
 
 			// Execute
 			err := rootCmd.Execute()

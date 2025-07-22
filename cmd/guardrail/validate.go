@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -41,7 +42,7 @@ func init() {
 }
 
 //nolint:gocognit // Validation logic requires handling multiple cases
-func runValidate(_ *cobra.Command, _ []string) error {
+func runValidate(cmd *cobra.Command, _ []string) error {
 	fileArg := viper.GetString("file")
 	directoryArg := viper.GetString("directory")
 	outputFormat := viper.GetString("output")
@@ -114,15 +115,21 @@ func runValidate(_ *cobra.Command, _ []string) error {
 
 	r := reporter.New(format)
 
+	// Get output writer
+	var writer io.Writer = os.Stdout
+	if cmd != nil {
+		writer = cmd.OutOrStdout()
+	}
+
 	// Report findings
-	if err := r.Report(findings, os.Stdout); err != nil {
+	if err := r.Report(findings, writer); err != nil {
 		return fmt.Errorf("failed to report findings: %w", err)
 	}
 
-	// Exit with non-zero code if high severity findings exist
+	// Return error if high severity findings exist (for proper exit code)
 	for _, finding := range findings {
 		if finding.Severity == validator.SeverityHigh {
-			os.Exit(1)
+			return fmt.Errorf("validation failed: found high severity issues")
 		}
 	}
 

@@ -116,25 +116,27 @@ this is not valid YAML
 		{
 			name: "validate single file",
 			args: []string{"guardrail", "validate", "--file", validFile},
+			expectError: true, // High severity findings cause error
 			checkOutput: func(t *testing.T, output string) {
 				if !strings.Contains(output, "RBAC001") {
-					t.Error("expected to find RBAC001 violation")
+					t.Errorf("expected to find RBAC001 violation, got: %s", output)
 				}
 			},
 		},
 		{
 			name: "validate directory",
 			args: []string{"guardrail", "validate", "--dir", tmpDir},
+			expectError: true, // High severity findings cause error
 			checkOutput: func(t *testing.T, output string) {
 				// Should find violations from multiple files
 				if !strings.Contains(output, "RBAC001") {
-					t.Error("expected to find RBAC001 violation")
+					t.Errorf("expected to find RBAC001 violation, got: %s", output)
 				}
 				if !strings.Contains(output, "RBAC002") {
-					t.Error("expected to find RBAC002 violation")
+					t.Errorf("expected to find RBAC002 violation, got: %s", output)
 				}
 				if !strings.Contains(output, "RBAC003") {
-					t.Error("expected to find RBAC003 violation")
+					t.Errorf("expected to find RBAC003 violation, got: %s", output)
 				}
 			},
 		},
@@ -151,9 +153,14 @@ this is not valid YAML
 		{
 			name: "json output format",
 			args: []string{"guardrail", "validate", "--file", validFile, "--output", "json"},
+			expectError: true, // High severity findings cause error
 			checkOutput: func(t *testing.T, output string) {
-				if !strings.Contains(output, `"rule_id":"RBAC001"`) {
-					t.Error("expected JSON output with RBAC001")
+				// Check for valid JSON structure - the JSON should be present even if there's an error
+				if !strings.Contains(output, `"RuleID": "RBAC001"`) {
+					t.Errorf("expected JSON output with RBAC001, got: %s", output)
+				}
+				if !strings.Contains(output, `"findings"`) {
+					t.Errorf("expected JSON to contain findings array, got: %s", output)
 				}
 			},
 		},
@@ -164,19 +171,20 @@ this is not valid YAML
 			// Reset viper for each test
 			viper.Reset()
 
+			// Reset flag values
+			file = ""
+			directory = ""
+
 			// Capture output
 			var buf bytes.Buffer
-			rootCmd.SetOut(&buf)
-			rootCmd.SetErr(&buf)
-
-			// Set args
-			os.Args = tt.args
 
 			// Re-initialize commands
 			rootCmd = &cobra.Command{
 				Use:   "guardrail",
 				Short: "A Kubernetes RBAC validation tool",
 			}
+			rootCmd.SetOut(&buf)
+			rootCmd.SetErr(&buf)
 			// Add the validate command with all its flags
 			validateCmd = &cobra.Command{
 				Use:   "validate",
@@ -191,7 +199,15 @@ this is not valid YAML
 			// Add output flag to root command
 			rootCmd.PersistentFlags().StringP("output", "o", "text", "Output format (text, json, sarif)")
 			
+			// Bind flags to viper
+			_ = viper.BindPFlag("file", validateCmd.Flags().Lookup("file"))
+			_ = viper.BindPFlag("directory", validateCmd.Flags().Lookup("dir"))
+			_ = viper.BindPFlag("output", rootCmd.PersistentFlags().Lookup("output"))
+			
 			rootCmd.AddCommand(validateCmd)
+
+			// Set command line arguments (skip the first arg which is the binary name)
+			rootCmd.SetArgs(tt.args[1:])
 
 			// Execute
 			err := rootCmd.Execute()

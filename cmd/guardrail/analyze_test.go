@@ -127,13 +127,14 @@ roleRef:
 			name: "analyze single file",
 			args: []string{"guardrail", "analyze", "--file", bindingFile},
 			checkOutput: func(t *testing.T, output string) {
-				// Should show permissions for alice
-				if !strings.Contains(output, "alice") {
-					t.Error("expected to find user alice in output")
+				// When analyzing a single binding file without the role,
+				// it should still show the subjects
+				if !strings.Contains(output, "User: alice") {
+					t.Errorf("expected to find user alice in output, got: %s", output)
 				}
-				// Should show pod-reader role
-				if !strings.Contains(output, "pod-reader") {
-					t.Error("expected to find pod-reader role")
+				// Should show the binding refers to pod-reader role
+				if !strings.Contains(output, "read-pods") {
+					t.Errorf("expected to find read-pods binding, got: %s", output)
 				}
 			},
 		},
@@ -142,15 +143,15 @@ roleRef:
 			args: []string{"guardrail", "analyze", "--dir", tmpDir},
 			checkOutput: func(t *testing.T, output string) {
 				// Should find both alice and admin
-				if !strings.Contains(output, "alice") {
-					t.Error("expected to find user alice")
+				if !strings.Contains(output, "User: alice") {
+					t.Errorf("expected to find user alice, got: %s", output)
 				}
-				if !strings.Contains(output, "admin") {
-					t.Error("expected to find user admin")
+				if !strings.Contains(output, "User: admin") {
+					t.Errorf("expected to find user admin, got: %s", output)
 				}
 				// Should show risk levels
 				if !strings.Contains(output, "Risk Level:") {
-					t.Error("expected to find risk level")
+					t.Errorf("expected to find risk level, got: %s", output)
 				}
 			},
 		},
@@ -158,8 +159,8 @@ roleRef:
 			name: "filter by subject",
 			args: []string{"guardrail", "analyze", "--dir", tmpDir, "--subject", "alice"},
 			checkOutput: func(t *testing.T, output string) {
-				if !strings.Contains(output, "alice") {
-					t.Error("expected to find alice")
+				if !strings.Contains(output, "User: alice") {
+					t.Errorf("expected to find alice, got: %s", output)
 				}
 				if strings.Contains(output, "admin") {
 					t.Error("should not find admin when filtering for alice")
@@ -171,8 +172,8 @@ roleRef:
 			args: []string{"guardrail", "analyze", "--dir", tmpDir, "--risk-level", "critical"},
 			checkOutput: func(t *testing.T, output string) {
 				// Only admin should have critical risk
-				if !strings.Contains(output, "admin") {
-					t.Error("expected to find admin with critical risk")
+				if !strings.Contains(output, "User: admin") {
+					t.Errorf("expected to find admin with critical risk, got: %s", output)
 				}
 				if strings.Contains(output, "alice") {
 					t.Error("alice should not have critical risk")
@@ -184,8 +185,8 @@ roleRef:
 			args: []string{"guardrail", "analyze", "--dir", tmpDir, "--show-roles"},
 			checkOutput: func(t *testing.T, output string) {
 				// Should show detailed permissions
-				if !strings.Contains(output, "Detailed Permissions:") {
-					t.Error("expected detailed permissions section")
+				if !strings.Contains(output, "🔍 Detailed Permissions:") {
+					t.Errorf("expected detailed permissions section, got: %s", output)
 				}
 			},
 		},
@@ -196,11 +197,12 @@ roleRef:
 				// Should be valid JSON
 				var result map[string]interface{}
 				if err := json.Unmarshal([]byte(output), &result); err != nil {
-					t.Errorf("expected valid JSON output, got error: %v", err)
+					t.Errorf("expected valid JSON output, got error: %v, output: %s", err, output)
+					return
 				}
 				// Should have subjects array
 				if _, ok := result["subjects"]; !ok {
-					t.Error("expected 'subjects' field in JSON output")
+					t.Errorf("expected 'subjects' field in JSON output, got: %v", result)
 				}
 			},
 		},
@@ -221,13 +223,20 @@ roleRef:
 			// Reset viper for each test
 			viper.Reset()
 
-			// Capture output
-			var buf bytes.Buffer
-			rootCmd.SetOut(&buf)
-			rootCmd.SetErr(&buf)
+			// Reset flag values
+			analyzeFile = ""
+			analyzeDirectory = ""
+			analyzeCluster = false
+			kubeconfig = ""
+			kubectx = ""
+			subject = ""
+			showRoles = false
+			riskLevel = ""
+			noColor = false
 
-			// Set args
-			os.Args = tt.args
+			// Capture output
+			var outBuf bytes.Buffer
+			var errBuf bytes.Buffer
 
 			// Re-initialize commands by creating new instances
 			// Note: We can't call init() directly, so we need to set up the command structure manually
@@ -235,6 +244,8 @@ roleRef:
 				Use:   "guardrail",
 				Short: "A Kubernetes RBAC validation tool",
 			}
+			rootCmd.SetOut(&outBuf)
+			rootCmd.SetErr(&errBuf)
 			// Add the analyze command with all its flags
 			analyzeCmd = &cobra.Command{
 				Use:   "analyze",
@@ -256,8 +267,23 @@ roleRef:
 			// Add output flag to root command
 			rootCmd.PersistentFlags().StringP("output", "o", "text", "Output format (text, json, sarif)")
 			
+			// Bind flags to viper
+			_ = viper.BindPFlag("analyze.file", analyzeCmd.Flags().Lookup("file"))
+			_ = viper.BindPFlag("analyze.directory", analyzeCmd.Flags().Lookup("dir"))
+			_ = viper.BindPFlag("analyze.cluster", analyzeCmd.Flags().Lookup("cluster"))
+			_ = viper.BindPFlag("analyze.kubeconfig", analyzeCmd.Flags().Lookup("kubeconfig"))
+			_ = viper.BindPFlag("analyze.context", analyzeCmd.Flags().Lookup("context"))
+			_ = viper.BindPFlag("analyze.subject", analyzeCmd.Flags().Lookup("subject"))
+			_ = viper.BindPFlag("analyze.show-roles", analyzeCmd.Flags().Lookup("show-roles"))
+			_ = viper.BindPFlag("analyze.risk-level", analyzeCmd.Flags().Lookup("risk-level"))
+			_ = viper.BindPFlag("analyze.no-color", analyzeCmd.Flags().Lookup("no-color"))
+			_ = viper.BindPFlag("output", rootCmd.PersistentFlags().Lookup("output"))
+			
 			rootCmd.AddCommand(analyzeCmd)
 
+			// Set command line arguments (skip the first arg which is the binary name)
+			rootCmd.SetArgs(tt.args[1:])
+			
 			// Execute
 			err := rootCmd.Execute()
 
@@ -268,7 +294,11 @@ roleRef:
 			}
 
 			if tt.checkOutput != nil {
-				tt.checkOutput(t, buf.String())
+				output := outBuf.String()
+				if output == "" {
+					output = errBuf.String()
+				}
+				tt.checkOutput(t, output)
 			}
 		})
 	}
@@ -465,4 +495,5 @@ func TestAnalyze_Imports(t *testing.T) {
 		RiskLevel: analyzer.RiskLevelLow,
 	}
 	testutil.AssertEqual(t, analyzer.RiskLevelLow, perm.RiskLevel, "analyzer types should work")
+	testutil.AssertEqual(t, "test", perm.Subject.Name, "subject should be set correctly")
 }

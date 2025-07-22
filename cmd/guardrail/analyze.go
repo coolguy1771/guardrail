@@ -137,9 +137,8 @@ func runAnalyze(cmd *cobra.Command, _ []string) error {
 	permissions = filterPermissions(permissions, subjectArg, riskLevelArg)
 
 	// Output results
-	// Use command's output writer if available, otherwise use os.Stdout
 	var writer io.Writer = os.Stdout
-	if cmd != nil && cmd.OutOrStdout() != nil {
+	if cmd != nil {
 		writer = cmd.OutOrStdout()
 	}
 	

@@ -52,7 +52,7 @@ func BenchmarkFilterBySubject(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = filterBySubject(permissions, "admin")
+		_ = FilterBySubject(permissions, "admin")
 	}
 }
 
@@ -67,7 +67,7 @@ func BenchmarkFilterByRiskLevel(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = filterByRiskLevel(permissions, RiskLevelHigh)
+		_ = FilterByRiskLevel(permissions, RiskLevelHigh)
 	}
 }
 
