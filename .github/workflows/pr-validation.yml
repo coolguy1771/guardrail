@@ -119,7 +119,7 @@ jobs:
 
       - name: Check coverage on changed code
         if: steps.changed-files.outputs.any_changed == 'true'
-        uses: PaloAltoNetworks/cov@3.0.0
+        uses: PaloAltoNetworks/cov@3.2.1
         with:
           cov_mode: coverage
           cov_file: coverage.out
