@@ -129,7 +129,7 @@ func runValidate(cmd *cobra.Command, _ []string) error {
 	// Return error if high severity findings exist (for proper exit code)
 	for _, finding := range findings {
 		if finding.Severity == validator.SeverityHigh {
-			return fmt.Errorf("validation failed: found high severity issues")
+			return errors.New("validation failed: found high severity issues")
 		}
 	}
 

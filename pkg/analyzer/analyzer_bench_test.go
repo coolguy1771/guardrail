@@ -1,12 +1,13 @@
-package analyzer
+package analyzer //nolint:testpackage // Uses internal analyzer fields for testing
 
 import (
 	"context"
 	"fmt"
 	"testing"
 
-	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+
+	rbacv1 "k8s.io/api/rbac/v1"
 
 	"github.com/coolguy1771/guardrail/internal/testutil"
 )
@@ -18,7 +19,7 @@ func BenchmarkAnalyzePermissions(b *testing.B) {
 	ctx := context.Background()
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_, err := analyzer.AnalyzePermissions(ctx)
 		if err != nil {
 			b.Fatal(err)
@@ -33,7 +34,7 @@ func BenchmarkAnalyzePermissionsLarge(b *testing.B) {
 	ctx := context.Background()
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_, err := analyzer.AnalyzePermissions(ctx)
 		if err != nil {
 			b.Fatal(err)
@@ -51,7 +52,7 @@ func BenchmarkFilterBySubject(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_ = FilterBySubject(permissions, "admin")
 	}
 }
@@ -66,7 +67,7 @@ func BenchmarkFilterByRiskLevel(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_ = FilterByRiskLevel(permissions, RiskLevelHigh)
 	}
 }
@@ -75,7 +76,7 @@ func createBenchmarkObjects() []runtime.Object {
 	var objects []runtime.Object
 
 	// Create roles
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		roleName := fmt.Sprintf("test-role-%d", i)
 		role := testutil.NewTestRole(roleName, "default")
 		testutil.AddRule(role, rbacv1.PolicyRule{
@@ -87,7 +88,7 @@ func createBenchmarkObjects() []runtime.Object {
 	}
 
 	// Create bindings
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		bindingName := fmt.Sprintf("test-binding-%d", i)
 		roleName := fmt.Sprintf("test-role-%d", i)
 		binding := testutil.NewTestRoleBinding(bindingName, "default", rbacv1.RoleRef{
@@ -109,10 +110,10 @@ func createLargeBenchmarkObjects() []runtime.Object {
 	var objects []runtime.Object
 
 	// Create many roles with various permissions
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		roleName := fmt.Sprintf("cluster-role-%d", i)
 		role := testutil.NewTestClusterRole(roleName)
-		for j := 0; j < 5; j++ {
+		for range 5 {
 			testutil.AddRule(role, rbacv1.PolicyRule{
 				APIGroups: []string{"", "apps", "batch"},
 				Resources: []string{"pods", "deployments", "jobs"},
@@ -123,7 +124,7 @@ func createLargeBenchmarkObjects() []runtime.Object {
 	}
 
 	// Create many bindings
-	for i := 0; i < 200; i++ {
+	for i := range 200 {
 		bindingName := fmt.Sprintf("cluster-binding-%d", i)
 		// Map each binding to a role (cycling through the 100 roles)
 		roleName := fmt.Sprintf("cluster-role-%d", i%100)
@@ -132,7 +133,7 @@ func createLargeBenchmarkObjects() []runtime.Object {
 			Kind:     "ClusterRole",
 			Name:     roleName,
 		})
-		for j := 0; j < 3; j++ {
+		for j := range 3 {
 			testutil.AddSubject(binding, rbacv1.Subject{
 				Kind: "User",
 				Name: fmt.Sprintf("user-%d-%d", i, j),

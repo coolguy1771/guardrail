@@ -1,10 +1,11 @@
-package validator
+package validator //nolint:testpackage // Uses internal validator fields for testing
 
 import (
 	"testing"
 
-	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+
+	rbacv1 "k8s.io/api/rbac/v1"
 
 	"github.com/coolguy1771/guardrail/internal/testutil"
 )
@@ -19,7 +20,7 @@ func BenchmarkValidateRole(b *testing.B) {
 	})
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		v.Validate(role)
 	}
 }
@@ -29,7 +30,7 @@ func BenchmarkValidateMultipleObjects(b *testing.B) {
 	objects := createBenchmarkObjects()
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		v.ValidateAll(objects)
 	}
 }
@@ -37,9 +38,9 @@ func BenchmarkValidateMultipleObjects(b *testing.B) {
 func BenchmarkValidateComplexRules(b *testing.B) {
 	v := New()
 	role := testutil.NewTestClusterRole("complex-role")
-	
+
 	// Add many complex rules
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		testutil.AddRule(role, rbacv1.PolicyRule{
 			APIGroups: []string{"", "apps", "batch", "extensions"},
 			Resources: []string{"pods", "deployments", "services", "configmaps", "secrets"},
@@ -48,14 +49,14 @@ func BenchmarkValidateComplexRules(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		v.Validate(role)
 	}
 }
 
 func BenchmarkWildcardDetection(b *testing.B) {
 	v := New()
-	
+
 	// Create roles with different wildcard patterns
 	roles := []runtime.Object{
 		createRoleWithWildcard("*", "pods", "get"),
@@ -65,7 +66,7 @@ func BenchmarkWildcardDetection(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		for _, role := range roles {
 			v.Validate(role)
 		}
@@ -86,7 +87,7 @@ func createBenchmarkObjects() []runtime.Object {
 	var objects []runtime.Object
 
 	// Mix of different RBAC objects
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		// Role with wildcard
 		role1 := testutil.NewTestRole("role-wildcard", "default")
 		testutil.AddRule(role1, rbacv1.PolicyRule{
@@ -99,7 +100,7 @@ func createBenchmarkObjects() []runtime.Object {
 		// ClusterRole with admin binding
 		cr := testutil.NewTestClusterRole("test-admin")
 		objects = append(objects, cr)
-		
+
 		crb := testutil.NewTestClusterRoleBinding("admin-binding", rbacv1.RoleRef{
 			APIGroup: "rbac.authorization.k8s.io",
 			Kind:     "ClusterRole",

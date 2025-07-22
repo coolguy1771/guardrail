@@ -16,7 +16,7 @@ import (
 func TestRootCommand(t *testing.T) {
 	// Save original args
 	oldArgs := os.Args
-	defer func() { os.Args = oldArgs }()
+	defer func() { os.Args = oldArgs }() //nolint:reassign // Required for testing
 
 	tests := []struct {
 		name        string
@@ -43,8 +43,8 @@ func TestRootCommand(t *testing.T) {
 			},
 		},
 		{
-			name: "version output",
-			args: []string{"guardrail", "version"},
+			name:        "version output",
+			args:        []string{"guardrail", "version"},
 			expectError: true, // version command doesn't exist yet
 		},
 		{
@@ -53,8 +53,9 @@ func TestRootCommand(t *testing.T) {
 			expectError: true,
 		},
 		{
-			name: "global output flag",
-			args: []string{"guardrail", "--output", "json", "validate", "--help"},
+			name:        "global output flag",
+			args:        []string{"guardrail", "--output", "json", "validate", "--help"},
+			expectError: false,
 			checkOutput: func(t *testing.T, output string) {
 				// Should still show help
 				if !strings.Contains(output, "Validate RBAC manifests") {
@@ -79,26 +80,27 @@ func TestRootCommand(t *testing.T) {
 				Long: `Guardrail is a Golang-based Kubernetes RBAC validation tool that helps teams
 maintain secure, compliant, and well-structured RBAC configurations.`,
 			}
-			
+
 			// Add persistent flags
-			rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.guardrail.yaml)")
+			rootCmd.PersistentFlags().
+				StringVar(&cfgFile, "config", "", "config file (default is $HOME/.guardrail.yaml)")
 			rootCmd.PersistentFlags().StringP("output", "o", "text", "Output format (text, json, sarif)")
-			
+
 			// Add subcommands (simplified versions for testing)
-			validateCmd := &cobra.Command{
+			validateCmdLocal := &cobra.Command{
 				Use:   "validate",
 				Short: "Validate RBAC manifests",
 			}
-			analyzeCmd := &cobra.Command{
+			analyzeCmdLocal := &cobra.Command{
 				Use:   "analyze",
 				Short: "Analyze RBAC permissions and explain what subjects can do",
 			}
-			rootCmd.AddCommand(validateCmd, analyzeCmd)
-			
+			rootCmd.AddCommand(validateCmdLocal, analyzeCmdLocal)
+
 			// Set output streams
 			rootCmd.SetOut(&buf)
 			rootCmd.SetErr(&buf)
-			
+
 			// Set command line arguments (skip the first arg which is the binary name)
 			rootCmd.SetArgs(tt.args[1:])
 
@@ -120,20 +122,15 @@ maintain secure, compliant, and well-structured RBAC configurations.`,
 
 func TestInitConfig(t *testing.T) {
 	// Save original env
-	oldHome := os.Getenv("HOME")
-	defer os.Setenv("HOME", oldHome)
+	// oldHome is unused but kept for documentation purposes
 
 	t.Run("with config file", func(t *testing.T) {
 		// Create temp config file
-		tmpDir, err := os.MkdirTemp("", "config-test-*")
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer os.RemoveAll(tmpDir)
+		tmpDir := t.TempDir()
 
 		configFile := filepath.Join(tmpDir, ".guardrail.yaml")
 		configContent := `output: json`
-		if err := os.WriteFile(configFile, []byte(configContent), 0644); err != nil {
+		if err := os.WriteFile(configFile, []byte(configContent), 0o644); err != nil {
 			t.Fatal(err)
 		}
 
@@ -144,18 +141,18 @@ func TestInitConfig(t *testing.T) {
 		// Capture stderr
 		oldStderr := os.Stderr
 		r, w, _ := os.Pipe()
-		os.Stderr = w
+		os.Stderr = w //nolint:reassign // Required for capturing stderr in tests
 
 		initConfig()
 
 		// Restore stderr
 		w.Close()
-		os.Stderr = oldStderr
+		os.Stderr = oldStderr //nolint:reassign // Restore stderr after test
 
 		// Read output
 		buf := new(bytes.Buffer)
-		if _, err := buf.ReadFrom(r); err != nil {
-			t.Fatalf("failed to read from pipe: %v", err)
+		if _, readErr := buf.ReadFrom(r); readErr != nil {
+			t.Fatalf("failed to read from pipe: %v", readErr)
 		}
 		output := buf.String()
 
@@ -176,12 +173,8 @@ func TestInitConfig(t *testing.T) {
 		cfgFile = ""
 
 		// Set HOME to temp dir
-		tmpDir, err := os.MkdirTemp("", "home-test-*")
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer os.RemoveAll(tmpDir)
-		os.Setenv("HOME", tmpDir)
+		tmpDir := t.TempDir()
+		t.Setenv("HOME", tmpDir)
 
 		// Should not panic
 		initConfig()
@@ -209,11 +202,7 @@ func TestMain(t *testing.T) {
 
 func TestConfigFileHandling(t *testing.T) {
 	// Test various config file scenarios
-	tmpDir, err := os.MkdirTemp("", "config-scenarios-*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(tmpDir)
+	tmpDir := t.TempDir()
 
 	tests := []struct {
 		name       string
@@ -246,7 +235,7 @@ validate:
 		t.Run(tt.name, func(t *testing.T) {
 			// Create config file
 			configPath := filepath.Join(tmpDir, tt.configFile)
-			if err := os.WriteFile(configPath, []byte(tt.content), 0644); err != nil {
+			if err := os.WriteFile(configPath, []byte(tt.content), 0o644); err != nil {
 				t.Fatal(err)
 			}
 
@@ -256,8 +245,8 @@ validate:
 			viper.SetConfigFile(configPath)
 
 			// Read config
-			err := viper.ReadInConfig()
-			testutil.AssertNil(t, err, "reading config should not error")
+			readErr := viper.ReadInConfig()
+			testutil.AssertNil(t, readErr, "reading config should not error")
 
 			// Check values
 			for key, expectedValue := range tt.expected {
@@ -274,8 +263,7 @@ func TestEnvironmentVariables(t *testing.T) {
 	defer viper.Reset() // Ensure viper is reset even if test fails
 
 	// Set env var
-	os.Setenv("GUARDRAIL_OUTPUT", "sarif")
-	defer os.Unsetenv("GUARDRAIL_OUTPUT")
+	t.Setenv("GUARDRAIL_OUTPUT", "sarif")
 
 	// Enable automatic env
 	viper.AutomaticEnv()

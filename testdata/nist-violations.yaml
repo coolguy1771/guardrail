@@ -1,0 +1,172 @@
+# Example RBAC configurations that violate NIST SP 800-190 guidelines
+# This file is used for testing guardrail's NIST-based validation rules
+
+# RBAC005: Service Account with risky permissions
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: risky-sa-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+- kind: ServiceAccount
+  name: automation-sa
+  namespace: default
+
+# RBAC006: Exec and attach permissions
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: container-debug-role
+  namespace: production
+rules:
+- apiGroups: [""]
+  resources: ["pods/exec", "pods/attach"]
+  verbs: ["create"]
+
+# RBAC007: Impersonation privileges
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: impersonator-role
+rules:
+- apiGroups: [""]
+  resources: ["users", "groups", "serviceaccounts"]
+  verbs: ["impersonate"]
+
+# RBAC008: Escalate and bind verbs
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: rbac-manager
+rules:
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources: ["roles", "clusterroles"]
+  verbs: ["escalate", "bind"]
+
+# RBAC009: Privileged container access
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: psp-user
+  namespace: development
+rules:
+- apiGroups: ["policy"]
+  resources: ["podsecuritypolicies"]
+  verbs: ["use"]
+  resourceNames: ["privileged"]
+
+# RBAC010: Node and PV access
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: node-manager
+rules:
+- apiGroups: [""]
+  resources: ["nodes", "nodes/proxy"]
+  verbs: ["*"]
+- apiGroups: [""]
+  resources: ["persistentvolumes"]
+  verbs: ["update", "patch", "delete"]
+
+# RBAC011: Webhook configuration access
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: webhook-admin
+rules:
+- apiGroups: ["admissionregistration.k8s.io"]
+  resources: ["mutatingwebhookconfigurations", "validatingwebhookconfigurations"]
+  verbs: ["create", "update", "patch"]
+
+# RBAC012: CRD and APIService modifications
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: api-extender
+rules:
+- apiGroups: ["apiextensions.k8s.io"]
+  resources: ["customresourcedefinitions"]
+  verbs: ["*"]
+- apiGroups: ["apiregistration.k8s.io"]
+  resources: ["apiservices"]
+  verbs: ["create", "update", "delete"]
+
+# RBAC013: Cross-namespace access (RoleBinding referencing ClusterRole)
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cross-namespace-binding
+  namespace: team-a
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-viewer
+subjects:
+- kind: User
+  name: developer
+
+# RBAC014: Token and certificate requests
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: token-manager
+rules:
+- apiGroups: [""]
+  resources: ["serviceaccounts/token"]
+  verbs: ["create"]
+- apiGroups: ["certificates.k8s.io"]
+  resources: ["certificatesigningrequests"]
+  verbs: ["create", "update"]
+
+# Combined violations in a single role
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: super-dangerous-role
+rules:
+# RBAC001: Wildcard permissions
+- apiGroups: ["*"]
+  resources: ["*"]
+  verbs: ["*"]
+# RBAC003: Secrets access
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list", "watch"]
+# RBAC006: Exec permissions
+- apiGroups: [""]
+  resources: ["pods/exec"]
+  verbs: ["create"]
+# RBAC007: Impersonation
+- apiGroups: [""]
+  resources: ["users"]
+  verbs: ["impersonate"]
+
+# Service account with admin binding (RBAC002 + RBAC005)
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: sa-admin-binding
+  namespace: critical-apps
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: admin
+subjects:
+- kind: ServiceAccount
+  name: app-service-account
+  namespace: critical-apps

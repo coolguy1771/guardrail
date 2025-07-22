@@ -113,6 +113,77 @@ func defaultRules() []Rule {
 			Severity:    SeverityLow,
 			Validate:    validateNamespacedRoles,
 		},
+		// NIST SP 800-190 based rules
+		{
+			ID:          "RBAC005",
+			Name:        "Avoid Service Account Token Automounting",
+			Description: "Service accounts with excessive permissions should not automount tokens (NIST SP 800-190)",
+			Severity:    SeverityMedium,
+			Validate:    validateServiceAccountTokens,
+		},
+		{
+			ID:          "RBAC006",
+			Name:        "Restrict Exec and Attach Permissions",
+			Description: "Exec and attach verbs allow interactive container access and should be restricted (NIST SP 800-190)",
+			Severity:    SeverityHigh,
+			Validate:    validateExecAttachPermissions,
+		},
+		{
+			ID:          "RBAC007",
+			Name:        "Limit Impersonation Privileges",
+			Description: "Impersonation allows users to act as other users/groups and should be strictly limited (NIST SP 800-190)",
+			Severity:    SeverityHigh,
+			Validate:    validateImpersonationPrivileges,
+		},
+		{
+			ID:          "RBAC008",
+			Name:        "Restrict Escalate and Bind Verbs",
+			Description: "Escalate and bind verbs can lead to privilege escalation (NIST SP 800-190)",
+			Severity:    SeverityHigh,
+			Validate:    validateEscalateBindVerbs,
+		},
+		{
+			ID:          "RBAC009",
+			Name:        "Audit Privileged Container Access",
+			Description: "Access to privileged containers and host namespaces should be audited (NIST SP 800-190)",
+			Severity:    SeverityHigh,
+			Validate:    validatePrivilegedContainerAccess,
+		},
+		{
+			ID:          "RBAC010",
+			Name:        "Restrict Node and PersistentVolume Access",
+			Description: "Direct node and persistent volume access should be restricted (NIST SP 800-190)",
+			Severity:    SeverityMedium,
+			Validate:    validateNodePVAccess,
+		},
+		{
+			ID:          "RBAC011",
+			Name:        "Limit Webhook Configuration Access",
+			Description: "Webhook configurations can intercept API requests and should be protected (NIST SP 800-190)",
+			Severity:    SeverityHigh,
+			Validate:    validateWebhookAccess,
+		},
+		{
+			ID:          "RBAC012",
+			Name:        "Restrict CRD and APIService Modifications",
+			Description: "Custom Resource Definitions and API services extend the API and require protection (NIST SP 800-190)",
+			Severity:    SeverityHigh,
+			Validate:    validateCRDAPIServiceAccess,
+		},
+		{
+			ID:          "RBAC013",
+			Name:        "Separate Concerns with Namespace Isolation",
+			Description: "Cross-namespace access should be minimized for proper isolation (NIST SP 800-190)",
+			Severity:    SeverityMedium,
+			Validate:    validateNamespaceIsolation,
+		},
+		{
+			ID:          "RBAC014",
+			Name:        "Restrict TokenRequest and CertificateSigningRequest",
+			Description: "Token and certificate requests can be used for authentication bypass (NIST SP 800-190)",
+			Severity:    SeverityHigh,
+			Validate:    validateTokenCertificateRequests,
+		},
 	}
 }
 

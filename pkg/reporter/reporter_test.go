@@ -1,4 +1,4 @@
-package reporter
+package reporter //nolint:testpackage // Uses internal reporter fields for testing
 
 import (
 	"bytes"
@@ -46,13 +46,13 @@ func createTestFindings() []validator.Finding {
 			Remediation: "Limit secrets access to specific named resources",
 		},
 		{
-			RuleID:    "RBAC004",
-			RuleName:  "Prefer Namespaced Roles",
-			Severity:  validator.SeverityLow,
-			Message:   "ClusterRole only contains namespace-scoped resources",
-			Resource:  "namespaced-cr",
-			Namespace: "",
-			Kind:      "ClusterRole",
+			RuleID:      "RBAC004",
+			RuleName:    "Prefer Namespaced Roles",
+			Severity:    validator.SeverityLow,
+			Message:     "ClusterRole only contains namespace-scoped resources",
+			Resource:    "namespaced-cr",
+			Namespace:   "",
+			Kind:        "ClusterRole",
 			Remediation: "Consider using a Role instead",
 		},
 		{
@@ -76,22 +76,22 @@ func TestNew(t *testing.T) {
 		{
 			name:     "text format",
 			format:   FormatText,
-			expected: "*TextReporter",
+			expected: "*reporter.TextReporter",
 		},
 		{
 			name:     "json format",
 			format:   FormatJSON,
-			expected: "*JSONReporter",
+			expected: "*reporter.JSONReporter",
 		},
 		{
 			name:     "sarif format",
 			format:   FormatSARIF,
-			expected: "*SARIFReporter",
+			expected: "*reporter.SARIFReporter",
 		},
 		{
 			name:     "unknown format defaults to text",
 			format:   Format("unknown"),
-			expected: "*TextReporter",
+			expected: "*reporter.TextReporter",
 		},
 	}
 
@@ -99,12 +99,11 @@ func TestNew(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			reporter := New(tt.format)
 			testutil.AssertNotNil(t, reporter, "New should return non-nil reporter")
-			
-			// Check the type - include package name in comparison
+
+			// Check the type
 			typeName := fmt.Sprintf("%T", reporter)
-			expectedWithPackage := fmt.Sprintf("*reporter.%s", strings.TrimPrefix(tt.expected, "*"))
-			if typeName != expectedWithPackage {
-				t.Errorf("expected reporter type %s, got %s", expectedWithPackage, typeName)
+			if typeName != tt.expected {
+				t.Errorf("expected reporter type %s, got %s", tt.expected, typeName)
 			}
 		})
 	}
@@ -112,31 +111,31 @@ func TestNew(t *testing.T) {
 
 func TestTextReporter_Report(t *testing.T) {
 	reporter := &TextReporter{}
-	
+
 	t.Run("no findings", func(t *testing.T) {
 		var buf bytes.Buffer
 		err := reporter.Report([]validator.Finding{}, &buf)
 		testutil.AssertNil(t, err, "Report should not return error")
-		
+
 		output := buf.String()
 		if !strings.Contains(output, "✅ No issues found!") {
 			t.Errorf("expected success message, got: %s", output)
 		}
 	})
-	
+
 	t.Run("with findings", func(t *testing.T) {
 		findings := createTestFindings()
 		var buf bytes.Buffer
 		err := reporter.Report(findings, &buf)
 		testutil.AssertNil(t, err, "Report should not return error")
-		
+
 		output := buf.String()
-		
+
 		// Check summary
 		if !strings.Contains(output, "Found 5 issue(s)") {
 			t.Errorf("expected summary with 5 issues, got: %s", output)
 		}
-		
+
 		// Check severity sections
 		expectedSeverities := []string{
 			"🔴 HIGH (2)",
@@ -144,13 +143,13 @@ func TestTextReporter_Report(t *testing.T) {
 			"🔵 LOW (1)",
 			"ℹ️ INFO (1)",
 		}
-		
+
 		for _, expected := range expectedSeverities {
 			if !strings.Contains(output, expected) {
 				t.Errorf("expected to find '%s' in output", expected)
 			}
 		}
-		
+
 		// Check specific findings
 		if !strings.Contains(output, "RBAC001") {
 			t.Error("expected to find RBAC001 in output")
@@ -169,41 +168,41 @@ func TestTextReporter_Report(t *testing.T) {
 
 func TestJSONReporter_Report(t *testing.T) {
 	reporter := &JSONReporter{}
-	
+
 	t.Run("no findings", func(t *testing.T) {
 		var buf bytes.Buffer
 		err := reporter.Report([]validator.Finding{}, &buf)
 		testutil.AssertNil(t, err, "Report should not return error")
-		
+
 		var report JSONReport
-		err = json.Unmarshal(buf.Bytes(), &report)
+		err = json.Unmarshal(buf.Bytes(), &report) //nolint:musttag // JSONReport has json tags
 		testutil.AssertNil(t, err, "should unmarshal JSON")
-		
+
 		testutil.AssertEqual(t, 0, report.Summary.Total, "total findings")
 		testutil.AssertEqual(t, 0, len(report.Findings), "findings array length")
 	})
-	
+
 	t.Run("with findings", func(t *testing.T) {
 		findings := createTestFindings()
 		var buf bytes.Buffer
 		err := reporter.Report(findings, &buf)
 		testutil.AssertNil(t, err, "Report should not return error")
-		
+
 		var report JSONReport
-		err = json.Unmarshal(buf.Bytes(), &report)
+		err = json.Unmarshal(buf.Bytes(), &report) //nolint:musttag // JSONReport has json tags
 		testutil.AssertNil(t, err, "should unmarshal JSON")
-		
+
 		// Check summary
 		testutil.AssertEqual(t, 5, report.Summary.Total, "total findings")
 		testutil.AssertEqual(t, 2, report.Summary.BySeverity["HIGH"], "high severity count")
 		testutil.AssertEqual(t, 1, report.Summary.BySeverity["MEDIUM"], "medium severity count")
 		testutil.AssertEqual(t, 1, report.Summary.BySeverity["LOW"], "low severity count")
 		testutil.AssertEqual(t, 1, report.Summary.BySeverity["INFO"], "info severity count")
-		
+
 		// Check timestamp
 		_, err = time.Parse(time.RFC3339, report.Timestamp)
 		testutil.AssertNil(t, err, "timestamp should be valid RFC3339")
-		
+
 		// Check findings
 		testutil.AssertEqual(t, 5, len(report.Findings), "findings array length")
 		testutil.AssertEqual(t, "RBAC001", report.Findings[0].RuleID, "first finding rule ID")
@@ -213,48 +212,53 @@ func TestJSONReporter_Report(t *testing.T) {
 func TestSARIFReporter_Report(t *testing.T) {
 	reporter := &SARIFReporter{}
 	findings := createTestFindings()
-	
+
 	var buf bytes.Buffer
 	err := reporter.Report(findings, &buf)
 	testutil.AssertNil(t, err, "Report should not return error")
-	
+
 	var sarif SARIF
 	err = json.Unmarshal(buf.Bytes(), &sarif)
 	testutil.AssertNil(t, err, "should unmarshal SARIF JSON")
-	
+
 	// Check SARIF structure
 	testutil.AssertEqual(t, "2.1.0", sarif.Version, "SARIF version")
 	testutil.AssertEqual(t, "https://json.schemastore.org/sarif-2.1.0.json", sarif.Schema, "SARIF schema")
 	testutil.AssertEqual(t, 1, len(sarif.Runs), "SARIF runs count")
-	
+
 	run := sarif.Runs[0]
 	testutil.AssertEqual(t, "guardrail", run.Tool.Driver.Name, "tool name")
 	testutil.AssertEqual(t, "1.0.0", run.Tool.Driver.Version, "tool version")
 	testutil.AssertEqual(t, "https://github.com/coolguy1771/guardrail", run.Tool.Driver.InformationURI, "tool URI")
-	
+
 	// Check rules (should be deduplicated)
 	// We have 5 findings but only 5 unique rules in our test data
 	testutil.AssertEqual(t, 5, len(run.Tool.Driver.Rules), "unique rules count")
-	
+
 	// Check results
 	testutil.AssertEqual(t, 5, len(run.Results), "results count")
-	
+
 	// Check first result
 	firstResult := run.Results[0]
 	testutil.AssertEqual(t, "RBAC001", firstResult.RuleID, "first result rule ID")
 	testutil.AssertEqual(t, "error", firstResult.Level, "first result level (HIGH -> error)")
 	testutil.AssertEqual(t, "Wildcard verb '*' found in Role", firstResult.Message.Text, "first result message")
-	
+
 	// Check location
 	testutil.AssertEqual(t, 1, len(firstResult.Locations), "locations count")
 	expectedURI := "namespace/default/Role/admin-role"
 	testutil.AssertEqual(t, expectedURI, firstResult.Locations[0].PhysicalLocation.ArtifactLocation.URI, "location URI")
-	
+
 	// Check a cluster-scoped resource
 	for _, result := range run.Results {
 		if result.RuleID == "RBAC002" {
-			expectedURI := "ClusterRoleBinding/admin-binding"
-			testutil.AssertEqual(t, expectedURI, result.Locations[0].PhysicalLocation.ArtifactLocation.URI, "cluster-scoped URI")
+			expectedClusterURI := "ClusterRoleBinding/admin-binding"
+			testutil.AssertEqual(
+				t,
+				expectedClusterURI,
+				result.Locations[0].PhysicalLocation.ArtifactLocation.URI,
+				"cluster-scoped URI",
+			)
 			break
 		}
 	}
@@ -263,7 +267,7 @@ func TestSARIFReporter_Report(t *testing.T) {
 func TestGroupBySeverity(t *testing.T) {
 	findings := createTestFindings()
 	grouped := groupBySeverity(findings)
-	
+
 	testutil.AssertEqual(t, 2, len(grouped[validator.SeverityHigh]), "high severity count")
 	testutil.AssertEqual(t, 1, len(grouped[validator.SeverityMedium]), "medium severity count")
 	testutil.AssertEqual(t, 1, len(grouped[validator.SeverityLow]), "low severity count")
@@ -281,7 +285,7 @@ func TestGetSeverityIcon(t *testing.T) {
 		{validator.SeverityInfo, "ℹ️"},
 		{validator.Severity("unknown"), "•"},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(string(tt.severity), func(t *testing.T) {
 			icon := getSeverityIcon(tt.severity)
@@ -301,7 +305,7 @@ func TestSeverityToSARIFLevel(t *testing.T) {
 		{validator.SeverityInfo, "note"},
 		{validator.Severity("unknown"), "none"},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(string(tt.severity), func(t *testing.T) {
 			level := severityToSARIFLevel(tt.severity)
@@ -312,33 +316,33 @@ func TestSeverityToSARIFLevel(t *testing.T) {
 
 func TestReportToFile(t *testing.T) {
 	findings := createTestFindings()
-	
+
 	// Create temporary file
-	tmpfile, err := os.CreateTemp("", "test-report-*.json")
+	tmpfile, err := os.CreateTemp(t.TempDir(), "test-report-*.json")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer os.Remove(tmpfile.Name())
 	tmpfile.Close()
-	
+
 	// Write report to file
 	err = ReportToFile(findings, FormatJSON, tmpfile.Name())
 	testutil.AssertNil(t, err, "ReportToFile should not return error")
-	
+
 	// Read and verify the file
 	data, err := os.ReadFile(tmpfile.Name())
 	testutil.AssertNil(t, err, "should read file")
-	
+
 	var report JSONReport
-	err = json.Unmarshal(data, &report)
+	err = json.Unmarshal(data, &report) //nolint:musttag // JSONReport has json tags
 	testutil.AssertNil(t, err, "should unmarshal JSON from file")
-	
+
 	testutil.AssertEqual(t, 5, report.Summary.Total, "total findings in file")
 }
 
 func TestReportToFile_Error(t *testing.T) {
 	findings := createTestFindings()
-	
+
 	// Try to write to an invalid path
 	err := ReportToFile(findings, FormatJSON, "/invalid/path/file.json")
 	testutil.AssertNotNil(t, err, "ReportToFile should return error for invalid path")
@@ -349,7 +353,7 @@ func TestReportToFile_Error(t *testing.T) {
 
 func TestTextReporter_FormattingDetails(t *testing.T) {
 	reporter := &TextReporter{}
-	
+
 	// Test with a finding that has no remediation
 	findings := []validator.Finding{
 		{
@@ -358,23 +362,23 @@ func TestTextReporter_FormattingDetails(t *testing.T) {
 			Severity:  validator.SeverityHigh,
 			Message:   "Test message",
 			Resource:  "test-resource",
-			Namespace: "",  // No namespace
+			Namespace: "", // No namespace
 			Kind:      "ClusterRole",
 			// No remediation
 		},
 	}
-	
+
 	var buf bytes.Buffer
 	err := reporter.Report(findings, &buf)
 	testutil.AssertNil(t, err, "Report should not return error")
-	
+
 	output := buf.String()
-	
+
 	// Should not show namespace for cluster-scoped resources
 	if strings.Contains(output, "namespace:") {
 		t.Error("should not show namespace for cluster-scoped resource")
 	}
-	
+
 	// Should not show remediation section when not provided
 	if strings.Contains(output, "Remediation:") {
 		t.Error("should not show remediation when not provided")
@@ -383,7 +387,7 @@ func TestTextReporter_FormattingDetails(t *testing.T) {
 
 func TestJSONReporter_EmptySeverity(t *testing.T) {
 	reporter := &JSONReporter{}
-	
+
 	// Test with findings that don't cover all severities
 	findings := []validator.Finding{
 		{
@@ -391,21 +395,21 @@ func TestJSONReporter_EmptySeverity(t *testing.T) {
 			Severity: validator.SeverityHigh,
 		},
 	}
-	
+
 	var buf bytes.Buffer
 	err := reporter.Report(findings, &buf)
 	testutil.AssertNil(t, err, "Report should not return error")
-	
+
 	var report JSONReport
-	err = json.Unmarshal(buf.Bytes(), &report)
+	err = json.Unmarshal(buf.Bytes(), &report) //nolint:musttag // JSONReport has json tags
 	testutil.AssertNil(t, err, "should unmarshal JSON")
-	
+
 	// Check that only HIGH severity is in the map
 	testutil.AssertEqual(t, 1, len(report.Summary.BySeverity), "severity map should only contain present severities")
 	testutil.AssertEqual(t, 1, report.Summary.BySeverity["HIGH"], "high severity count")
 }
 
-// Add missing import
+// Add missing import..
 func TestReporter_Imports(t *testing.T) {
 	// This test ensures the fmt import is used
 	output := fmt.Sprintf("test %d", 1)

@@ -1,14 +1,14 @@
-package kubernetes
+package kubernetes //nolint:testpackage // Uses internal kubernetes fields for testing
 
 import (
 	"context"
-
 	"testing"
+
+	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/rest"
 
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes/fake"
-	"k8s.io/client-go/rest"
 
 	"github.com/coolguy1771/guardrail/internal/testutil"
 )
@@ -23,7 +23,7 @@ func TestNewClientFromConfig(t *testing.T) {
 	config := &rest.Config{
 		Host: "https://fake-k8s-api:6443",
 	}
-	
+
 	client, err := NewClientFromConfig(config)
 	testutil.AssertNil(t, err, "NewClientFromConfig should not return error")
 	testutil.AssertNotNil(t, client, "client should not be nil")
@@ -33,10 +33,10 @@ func TestNewClientFromConfig(t *testing.T) {
 func TestGetRBACReader(t *testing.T) {
 	clientset := fake.NewSimpleClientset()
 	client := &Client{clientset: clientset}
-	
+
 	reader := client.GetRBACReader()
 	testutil.AssertNotNil(t, reader, "GetRBACReader should return non-nil reader")
-	
+
 	// Test that the reader implements the interface methods
 	testutil.AssertNotNil(t, reader.Roles("default"), "Roles method should work")
 	testutil.AssertNotNil(t, reader.RoleBindings("default"), "RoleBindings method should work")
@@ -58,11 +58,11 @@ func TestFetchRoles(t *testing.T) {
 			Namespace: "kube-system",
 		},
 	}
-	
+
 	// Create fake clientset with roles
 	clientset := fake.NewSimpleClientset(role1, role2)
 	client := &Client{clientset: clientset}
-	
+
 	tests := []struct {
 		name      string
 		namespace string
@@ -84,7 +84,7 @@ func TestFetchRoles(t *testing.T) {
 			wantCount: 0,
 		},
 	}
-	
+
 	ctx := context.Background()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -109,17 +109,17 @@ func TestFetchRoleBindings(t *testing.T) {
 			Namespace: "kube-system",
 		},
 	}
-	
+
 	clientset := fake.NewSimpleClientset(rb1, rb2)
 	client := &Client{clientset: clientset}
-	
+
 	ctx := context.Background()
-	
+
 	// Test fetching from specific namespace
 	resources, err := client.FetchRoleBindings(ctx, "default")
 	testutil.AssertNil(t, err, "FetchRoleBindings should not return error")
 	testutil.AssertEqual(t, 1, len(resources), "should have 1 role binding")
-	
+
 	// Test fetching from all namespaces
 	resources, err = client.FetchRoleBindings(ctx, "")
 	testutil.AssertNil(t, err, "FetchRoleBindings should not return error")
@@ -138,13 +138,13 @@ func TestFetchClusterRoles(t *testing.T) {
 			Name: "cluster-role-2",
 		},
 	}
-	
+
 	clientset := fake.NewSimpleClientset(cr1, cr2)
 	client := &Client{clientset: clientset}
-	
+
 	ctx := context.Background()
 	resources, err := client.FetchClusterRoles(ctx)
-	
+
 	testutil.AssertNil(t, err, "FetchClusterRoles should not return error")
 	testutil.AssertEqual(t, 2, len(resources), "should have 2 cluster roles")
 }
@@ -161,13 +161,13 @@ func TestFetchClusterRoleBindings(t *testing.T) {
 			Name: "crb-2",
 		},
 	}
-	
+
 	clientset := fake.NewSimpleClientset(crb1, crb2)
 	client := &Client{clientset: clientset}
-	
+
 	ctx := context.Background()
 	resources, err := client.FetchClusterRoleBindings(ctx)
-	
+
 	testutil.AssertNil(t, err, "FetchClusterRoleBindings should not return error")
 	testutil.AssertEqual(t, 2, len(resources), "should have 2 cluster role bindings")
 }
@@ -196,22 +196,22 @@ func TestFetchAllRBACResources(t *testing.T) {
 			Name: "test-crb",
 		},
 	}
-	
+
 	clientset := fake.NewSimpleClientset(role, roleBinding, clusterRole, clusterRoleBinding)
 	client := &Client{clientset: clientset}
-	
+
 	ctx := context.Background()
 	resources, err := client.FetchAllRBACResources(ctx)
-	
+
 	testutil.AssertNil(t, err, "FetchAllRBACResources should not return error")
 	testutil.AssertEqual(t, 4, len(resources), "should have 4 RBAC resources total")
-	
+
 	// Count each type
 	roleCount := 0
 	rbCount := 0
 	crCount := 0
 	crbCount := 0
-	
+
 	for _, res := range resources {
 		switch res.(type) {
 		case *rbacv1.Role:
@@ -224,7 +224,7 @@ func TestFetchAllRBACResources(t *testing.T) {
 			crbCount++
 		}
 	}
-	
+
 	testutil.AssertEqual(t, 1, roleCount, "should have 1 role")
 	testutil.AssertEqual(t, 1, rbCount, "should have 1 role binding")
 	testutil.AssertEqual(t, 1, crCount, "should have 1 cluster role")
@@ -245,19 +245,19 @@ func TestFetchSpecificRole(t *testing.T) {
 			},
 		},
 	}
-	
+
 	clientset := fake.NewSimpleClientset(role)
 	client := &Client{clientset: clientset}
-	
+
 	ctx := context.Background()
-	
+
 	// Test fetching existing role
 	fetchedRole, err := client.FetchSpecificRole(ctx, "default", "specific-role")
 	testutil.AssertNil(t, err, "FetchSpecificRole should not return error")
 	testutil.AssertNotNil(t, fetchedRole, "role should not be nil")
 	testutil.AssertEqual(t, "specific-role", fetchedRole.Name, "role name")
 	testutil.AssertEqual(t, 1, len(fetchedRole.Rules), "role should have 1 rule")
-	
+
 	// Test fetching non-existent role
 	_, err = client.FetchSpecificRole(ctx, "default", "non-existent")
 	testutil.AssertNotNil(t, err, "should return error for non-existent role")
@@ -281,12 +281,12 @@ func TestFetchSpecificRoleBinding(t *testing.T) {
 			},
 		},
 	}
-	
+
 	clientset := fake.NewSimpleClientset(rb)
 	client := &Client{clientset: clientset}
-	
+
 	ctx := context.Background()
-	
+
 	// Test fetching existing role binding
 	fetchedRB, err := client.FetchSpecificRoleBinding(ctx, "default", "specific-rb")
 	testutil.AssertNil(t, err, "FetchSpecificRoleBinding should not return error")
@@ -308,12 +308,12 @@ func TestFetchSpecificClusterRole(t *testing.T) {
 			},
 		},
 	}
-	
+
 	clientset := fake.NewSimpleClientset(cr)
 	client := &Client{clientset: clientset}
-	
+
 	ctx := context.Background()
-	
+
 	// Test fetching existing cluster role
 	fetchedCR, err := client.FetchSpecificClusterRole(ctx, "specific-cr")
 	testutil.AssertNil(t, err, "FetchSpecificClusterRole should not return error")
@@ -338,12 +338,12 @@ func TestFetchSpecificClusterRoleBinding(t *testing.T) {
 			},
 		},
 	}
-	
+
 	clientset := fake.NewSimpleClientset(crb)
 	client := &Client{clientset: clientset}
-	
+
 	ctx := context.Background()
-	
+
 	// Test fetching existing cluster role binding
 	fetchedCRB, err := client.FetchSpecificClusterRoleBinding(ctx, "specific-crb")
 	testutil.AssertNil(t, err, "FetchSpecificClusterRoleBinding should not return error")
@@ -358,7 +358,7 @@ func TestRBACReaderImpl(t *testing.T) {
 	reader := &rbacReaderImpl{
 		rbacClient: clientset.RbacV1(),
 	}
-	
+
 	// Test that all methods return valid interfaces
 	testutil.AssertNotNil(t, reader.Roles("default"), "Roles should return interface")
 	testutil.AssertNotNil(t, reader.RoleBindings("default"), "RoleBindings should return interface")
@@ -366,11 +366,11 @@ func TestRBACReaderImpl(t *testing.T) {
 	testutil.AssertNotNil(t, reader.ClusterRoleBindings(), "ClusterRoleBindings should return interface")
 }
 
-// Test error handling scenarios
+// Test error handling scenarios.
 func TestErrorHandling(t *testing.T) {
 	// For error handling, we would need to create a custom fake that returns errors
 	// This is a simplified version showing the structure
-	
+
 	t.Run("FetchAllRBACResources with partial errors", func(t *testing.T) {
 		// In a real scenario, you'd mock the clientset to return errors
 		// for specific operations to test error propagation

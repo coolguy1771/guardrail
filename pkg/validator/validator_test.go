@@ -1,11 +1,12 @@
-package validator
+package validator //nolint:testpackage // Uses internal validator fields for testing
 
 import (
 	"testing"
 
+	"k8s.io/apimachinery/pkg/runtime"
+
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 
 	"github.com/coolguy1771/guardrail/internal/testutil"
 )
@@ -14,7 +15,7 @@ func TestNew(t *testing.T) {
 	v := New()
 	testutil.AssertNotNil(t, v, "New() should return a non-nil validator")
 	testutil.AssertNotNil(t, v.rules, "validator should have rules")
-	testutil.AssertEqual(t, 4, len(v.rules), "validator should have 4 default rules")
+	testutil.AssertEqual(t, 14, len(v.rules), "validator should have 14 default rules")
 }
 
 func TestNewWithRules(t *testing.T) {
@@ -24,7 +25,7 @@ func TestNewWithRules(t *testing.T) {
 			Name:        "Custom Rule",
 			Description: "A custom validation rule",
 			Severity:    SeverityLow,
-			Validate:    func(obj runtime.Object) []Finding { return nil },
+			Validate:    func(_ runtime.Object) []Finding { return nil },
 		},
 	}
 
@@ -131,14 +132,19 @@ func TestValidateAll(t *testing.T) {
 
 	v := New()
 	findings := v.ValidateAll(objects)
-	
+
 	// Debug: print all findings
 	for i, f := range findings {
 		t.Logf("Finding %d: RuleID=%s, Resource=%s, Message=%s", i, f.RuleID, f.Resource, f.Message)
 	}
-	
+
 	// The ClusterRole only has namespace-scoped resources (secrets) so RBAC004 triggers too
-	testutil.AssertEqual(t, 3, len(findings), "expected 3 findings (1 wildcard + 1 secrets access + 1 prefer namespaced)")
+	testutil.AssertEqual(
+		t,
+		3,
+		len(findings),
+		"expected 3 findings (1 wildcard + 1 secrets access + 1 prefer namespaced)",
+	)
 }
 
 func TestValidateWildcardPermissions(t *testing.T) {
@@ -189,7 +195,7 @@ func TestValidateWildcardPermissions(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			findings := validateWildcardPermissions(tt.object)
 			testutil.AssertEqual(t, tt.expectedCount, len(findings), "unexpected number of findings")
-			
+
 			if tt.expectedCount > 0 && len(findings) > 0 {
 				for _, finding := range findings {
 					testutil.AssertEqual(t, "RBAC001", finding.RuleID, "unexpected rule ID")
@@ -251,7 +257,7 @@ func TestValidateClusterAdminBinding(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			findings := validateClusterAdminBinding(tt.object)
 			testutil.AssertEqual(t, tt.expectedCount, len(findings), "unexpected number of findings")
-			
+
 			if tt.expectedCount > 0 && len(findings) > 0 {
 				testutil.AssertEqual(t, "RBAC002", findings[0].RuleID, "unexpected rule ID")
 				testutil.AssertEqual(t, SeverityHigh, findings[0].Severity, "unexpected severity")
@@ -342,7 +348,7 @@ func TestValidateSecretsAccess(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			findings := validateSecretsAccess(tt.object)
 			testutil.AssertEqual(t, tt.expectedCount, len(findings), "unexpected number of findings")
-			
+
 			if tt.expectedCount > 0 && len(findings) > 0 {
 				testutil.AssertEqual(t, "RBAC003", findings[0].RuleID, "unexpected rule ID")
 				testutil.AssertEqual(t, SeverityMedium, findings[0].Severity, "unexpected severity")
@@ -432,7 +438,7 @@ func TestValidateNamespacedRoles(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			findings := validateNamespacedRoles(tt.object)
 			testutil.AssertEqual(t, tt.expectedCount, len(findings), "unexpected number of findings")
-			
+
 			if tt.expectedCount > 0 && len(findings) > 0 {
 				testutil.AssertEqual(t, "RBAC004", findings[0].RuleID, "unexpected rule ID")
 				testutil.AssertEqual(t, SeverityLow, findings[0].Severity, "unexpected severity")
@@ -497,7 +503,7 @@ func TestCheckRulesForWildcards(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			findings := checkRulesForWildcards(tt.rules, tt.resourceName, tt.namespace, tt.kind)
 			testutil.AssertEqual(t, tt.expectedCount, len(findings), "unexpected number of findings")
-			
+
 			for _, finding := range findings {
 				testutil.AssertEqual(t, "RBAC001", finding.RuleID, "unexpected rule ID")
 				testutil.AssertEqual(t, tt.resourceName, finding.Resource, "unexpected resource name")
@@ -518,15 +524,25 @@ func TestSeverityConstants(t *testing.T) {
 
 func TestDefaultRules(t *testing.T) {
 	rules := defaultRules()
-	testutil.AssertEqual(t, 4, len(rules), "expected 4 default rules")
-	
+	testutil.AssertEqual(t, 14, len(rules), "expected 14 default rules")
+
 	expectedRules := map[string]string{
 		"RBAC001": "Avoid Wildcard Permissions",
 		"RBAC002": "Avoid Cluster-Admin Binding",
 		"RBAC003": "Avoid Secrets Access",
 		"RBAC004": "Prefer Namespaced Roles",
+		"RBAC005": "Avoid Service Account Token Automounting",
+		"RBAC006": "Restrict Exec and Attach Permissions",
+		"RBAC007": "Limit Impersonation Privileges",
+		"RBAC008": "Restrict Escalate and Bind Verbs",
+		"RBAC009": "Audit Privileged Container Access",
+		"RBAC010": "Restrict Node and PersistentVolume Access",
+		"RBAC011": "Limit Webhook Configuration Access",
+		"RBAC012": "Restrict CRD and APIService Modifications",
+		"RBAC013": "Separate Concerns with Namespace Isolation",
+		"RBAC014": "Restrict TokenRequest and CertificateSigningRequest",
 	}
-	
+
 	for _, rule := range rules {
 		expectedName, ok := expectedRules[rule.ID]
 		if !ok {

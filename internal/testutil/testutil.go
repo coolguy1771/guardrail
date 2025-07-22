@@ -4,12 +4,13 @@ import (
 	"fmt"
 	"testing"
 
+	"k8s.io/apimachinery/pkg/runtime"
+
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 )
 
-// NewTestRole creates a test Role with common defaults
+// NewTestRole creates a test Role with common defaults.
 func NewTestRole(name, namespace string) *rbacv1.Role {
 	return &rbacv1.Role{
 		TypeMeta: metav1.TypeMeta{
@@ -24,7 +25,7 @@ func NewTestRole(name, namespace string) *rbacv1.Role {
 	}
 }
 
-// NewTestClusterRole creates a test ClusterRole with common defaults
+// NewTestClusterRole creates a test ClusterRole with common defaults.
 func NewTestClusterRole(name string) *rbacv1.ClusterRole {
 	return &rbacv1.ClusterRole{
 		TypeMeta: metav1.TypeMeta{
@@ -38,7 +39,7 @@ func NewTestClusterRole(name string) *rbacv1.ClusterRole {
 	}
 }
 
-// NewTestRoleBinding creates a test RoleBinding with common defaults
+// NewTestRoleBinding creates a test RoleBinding with common defaults.
 func NewTestRoleBinding(name, namespace string, roleRef rbacv1.RoleRef) *rbacv1.RoleBinding {
 	return &rbacv1.RoleBinding{
 		TypeMeta: metav1.TypeMeta{
@@ -49,12 +50,12 @@ func NewTestRoleBinding(name, namespace string, roleRef rbacv1.RoleRef) *rbacv1.
 			Name:      name,
 			Namespace: namespace,
 		},
-		RoleRef: roleRef,
+		RoleRef:  roleRef,
 		Subjects: []rbacv1.Subject{},
 	}
 }
 
-// NewTestClusterRoleBinding creates a test ClusterRoleBinding with common defaults
+// NewTestClusterRoleBinding creates a test ClusterRoleBinding with common defaults.
 func NewTestClusterRoleBinding(name string, roleRef rbacv1.RoleRef) *rbacv1.ClusterRoleBinding {
 	return &rbacv1.ClusterRoleBinding{
 		TypeMeta: metav1.TypeMeta{
@@ -64,12 +65,12 @@ func NewTestClusterRoleBinding(name string, roleRef rbacv1.RoleRef) *rbacv1.Clus
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
-		RoleRef: roleRef,
+		RoleRef:  roleRef,
 		Subjects: []rbacv1.Subject{},
 	}
 }
 
-// AddRule adds a PolicyRule to a Role or ClusterRole
+// AddRule adds a PolicyRule to a Role or ClusterRole.
 func AddRule(obj runtime.Object, rule rbacv1.PolicyRule) {
 	switch v := obj.(type) {
 	case *rbacv1.Role:
@@ -81,7 +82,7 @@ func AddRule(obj runtime.Object, rule rbacv1.PolicyRule) {
 	}
 }
 
-// AddSubject adds a Subject to a RoleBinding or ClusterRoleBinding
+// AddSubject adds a Subject to a RoleBinding or ClusterRoleBinding.
 func AddSubject(obj runtime.Object, subject rbacv1.Subject) {
 	switch v := obj.(type) {
 	case *rbacv1.RoleBinding:
@@ -93,7 +94,7 @@ func AddSubject(obj runtime.Object, subject rbacv1.Subject) {
 	}
 }
 
-// NewPolicyRule creates a PolicyRule with common defaults
+// NewPolicyRule creates a PolicyRule with common defaults.
 func NewPolicyRule(apiGroups, resources, verbs []string) rbacv1.PolicyRule {
 	return rbacv1.PolicyRule{
 		APIGroups: apiGroups,
@@ -102,7 +103,7 @@ func NewPolicyRule(apiGroups, resources, verbs []string) rbacv1.PolicyRule {
 	}
 }
 
-// NewSubject creates a Subject with common defaults
+// NewSubject creates a Subject with common defaults.
 func NewSubject(kind, name, namespace string) rbacv1.Subject {
 	return rbacv1.Subject{
 		Kind:      kind,
@@ -111,7 +112,7 @@ func NewSubject(kind, name, namespace string) rbacv1.Subject {
 	}
 }
 
-// AssertEqual is a simple equality assertion helper
+// AssertEqual is a simple equality assertion helper.
 func AssertEqual(t *testing.T, expected, actual interface{}, message string) {
 	t.Helper()
 	if expected != actual {
@@ -119,7 +120,7 @@ func AssertEqual(t *testing.T, expected, actual interface{}, message string) {
 	}
 }
 
-// AssertNotNil asserts that a value is not nil
+// AssertNotNil asserts that a value is not nil.
 func AssertNotNil(t *testing.T, value interface{}, message string) {
 	t.Helper()
 	if value == nil {
@@ -127,7 +128,7 @@ func AssertNotNil(t *testing.T, value interface{}, message string) {
 	}
 }
 
-// AssertNil asserts that a value is nil
+// AssertNil asserts that a value is nil.
 func AssertNil(t *testing.T, value interface{}, message string) {
 	t.Helper()
 	if value != nil {
@@ -135,7 +136,7 @@ func AssertNil(t *testing.T, value interface{}, message string) {
 	}
 }
 
-// AssertContains asserts that a slice contains a specific value
+// AssertContains asserts that a slice contains a specific value.
 func AssertContains(t *testing.T, slice []string, value string, message string) {
 	t.Helper()
 	for _, v := range slice {
@@ -146,7 +147,7 @@ func AssertContains(t *testing.T, slice []string, value string, message string) 
 	t.Errorf("%s: expected slice to contain %s, but it didn't", message, value)
 }
 
-// AssertLen asserts that a slice has a specific length
+// AssertLen asserts that a slice has a specific length.
 func AssertLen(t *testing.T, slice interface{}, expectedLen int, message string) {
 	t.Helper()
 	var actualLen int
@@ -162,7 +163,7 @@ func AssertLen(t *testing.T, slice interface{}, expectedLen int, message string)
 	default:
 		t.Fatalf("%s: unsupported slice type", message)
 	}
-	
+
 	if actualLen != expectedLen {
 		t.Errorf("%s: expected length %d, got %d", message, expectedLen, actualLen)
 	}

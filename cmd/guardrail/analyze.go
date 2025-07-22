@@ -141,7 +141,7 @@ func runAnalyze(cmd *cobra.Command, _ []string) error {
 	if cmd != nil {
 		writer = cmd.OutOrStdout()
 	}
-	
+
 	switch outputFormat {
 	case "json":
 		return outputJSON(permissions, writer)
@@ -260,7 +260,7 @@ func outputJSON(permissions []analyzer.SubjectPermissions, w io.Writer) error {
 // outputHumanReadable prints a human-readable summary and detailed analysis of RBAC permissions for each subject, including risk distribution and optional rule details.
 // Returns an error only if output fails.
 //
-//nolint:forbidigo // CLI output needs fmt.Print
+
 func outputHumanReadable(permissions []analyzer.SubjectPermissions, showRoles bool, w io.Writer) error {
 	if len(permissions) == 0 {
 		fmt.Fprintln(w, "No RBAC permissions found matching the criteria.")
@@ -295,7 +295,7 @@ func outputHumanReadable(permissions []analyzer.SubjectPermissions, showRoles bo
 // It prints the subject's kind, name, namespace, risk level, and a breakdown of each permission with associated roles and bindings.
 // If showRoles is true, detailed permission rules are printed; otherwise, a summary is shown.
 //
-//nolint:forbidigo // CLI output needs fmt.Print
+
 func printSubjectAnalysis(subjectPerm analyzer.SubjectPermissions, showRoles bool, w io.Writer) {
 	// Print subject header
 	riskIcon := getRiskIcon(subjectPerm.RiskLevel)
@@ -331,7 +331,7 @@ func printSubjectAnalysis(subjectPerm analyzer.SubjectPermissions, showRoles boo
 
 // printRuleAnalysis displays a detailed, human-readable analysis of a policy rule, including its description, risk level, concerns, and allowed actions with explanations and examples, using indentation and optional color coding for clarity.
 //
-//nolint:forbidigo // CLI output needs fmt.Print
+
 func printRuleAnalysis(rule analyzer.PolicyRuleAnalysis, indent string, w io.Writer) {
 	fmt.Fprintf(w, "%s• %s\n", indent, rule.HumanReadable)
 	fmt.Fprintf(w, "%s  Risk: %s\n", indent, strings.ToUpper(string(rule.SecurityImpact.Level)))
@@ -448,7 +448,6 @@ type AnalysisSummary struct {
 // getSummary aggregates the total number of subjects and counts of each risk level from the provided permissions.
 // It returns an AnalysisSummary with these aggregated values.
 func getSummary(permissions []analyzer.SubjectPermissions) AnalysisSummary {
-	//nolint:exhaustruct // Risk counts are calculated in the loop below
 	summary := AnalysisSummary{
 		TotalSubjects: len(permissions),
 	}

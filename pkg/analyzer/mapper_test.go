@@ -1,4 +1,4 @@
-package analyzer
+package analyzer //nolint:testpackage // Uses internal analyzer fields for testing
 
 import (
 	"strings"
@@ -19,7 +19,7 @@ func TestNewPermissionMapper(t *testing.T) {
 			Permissions: []PermissionGrant{},
 		},
 	}
-	
+
 	mapper := NewPermissionMapper(permissions)
 	testutil.AssertNotNil(t, mapper, "NewPermissionMapper should return non-nil mapper")
 	testutil.AssertEqual(t, 1, len(mapper.permissions), "mapper should have 1 permission")
@@ -73,23 +73,23 @@ func TestWhoCanDo(t *testing.T) {
 			},
 		},
 	}
-	
+
 	mapper := NewPermissionMapper(permissions)
-	
+
 	tests := []struct {
-		name         string
-		verb         string
-		resource     string
-		apiGroup     string
-		expectCount  int
-		expectFirst  string // expected first subject name
+		name        string
+		verb        string
+		resource    string
+		apiGroup    string
+		expectCount int
+		expectFirst string // expected first subject name
 	}{
 		{
 			name:        "who can get pods",
 			verb:        "get",
 			resource:    "pods",
 			apiGroup:    "",
-			expectCount: 2, // both alice and admin-sa
+			expectCount: 2,          // both alice and admin-sa
 			expectFirst: "admin-sa", // admin-sa should be first (critical risk)
 		},
 		{
@@ -117,12 +117,12 @@ func TestWhoCanDo(t *testing.T) {
 			expectFirst: "admin-sa",
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			matches := mapper.WhoCanDo(tt.verb, tt.resource, tt.apiGroup)
 			testutil.AssertEqual(t, tt.expectCount, len(matches), "number of matches")
-			
+
 			if tt.expectCount > 0 && len(matches) > 0 {
 				testutil.AssertEqual(t, tt.expectFirst, matches[0].Subject.Name, "first subject name")
 			}
@@ -160,14 +160,14 @@ func TestWhatCanSubjectDo(t *testing.T) {
 			},
 		},
 	}
-	
+
 	mapper := NewPermissionMapper(permissions)
-	
+
 	tests := []struct {
-		name         string
-		subjectKind  string
-		subjectName  string
-		expectCount  int
+		name        string
+		subjectKind string
+		subjectName string
+		expectCount int
 	}{
 		{
 			name:        "specific user",
@@ -194,7 +194,7 @@ func TestWhatCanSubjectDo(t *testing.T) {
 			expectCount: 0,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := mapper.WhatCanSubjectDo(tt.subjectKind, tt.subjectName)
@@ -263,13 +263,13 @@ func TestGetDangerousPermissions(t *testing.T) {
 			},
 		},
 	}
-	
+
 	mapper := NewPermissionMapper(permissions)
 	dangerous := mapper.GetDangerousPermissions()
-	
+
 	// Should have 2 dangerous permissions (critical and high)
 	testutil.AssertEqual(t, 2, len(dangerous), "number of dangerous permissions")
-	
+
 	// Check that they're sorted by risk (critical first)
 	if len(dangerous) >= 2 {
 		testutil.AssertEqual(t, RiskLevelCritical, dangerous[0].RiskLevel, "first should be critical")
@@ -331,13 +331,13 @@ func TestGetPrivilegeEscalationPaths(t *testing.T) {
 			},
 		},
 	}
-	
+
 	mapper := NewPermissionMapper(permissions)
 	paths := mapper.GetPrivilegeEscalationPaths()
-	
+
 	// Should have 2 escalation paths (escalator and impersonator)
 	testutil.AssertEqual(t, 2, len(paths), "number of escalation paths")
-	
+
 	// Check the types of risks found
 	foundEscalate := false
 	foundImpersonate := false
@@ -351,7 +351,7 @@ func TestGetPrivilegeEscalationPaths(t *testing.T) {
 			}
 		}
 	}
-	
+
 	if !foundEscalate {
 		t.Error("expected to find privilege escalation risk")
 	}
@@ -405,21 +405,21 @@ func TestGetResourceAccess(t *testing.T) {
 			},
 		},
 	}
-	
+
 	mapper := NewPermissionMapper(permissions)
 	accessMap := mapper.GetResourceAccess("pods", "")
-	
+
 	testutil.AssertEqual(t, "pods", accessMap.Resource, "resource name")
 	testutil.AssertEqual(t, "", accessMap.APIGroup, "api group")
 	testutil.AssertNotNil(t, accessMap.Access, "access map")
-	
+
 	// Check specific verb access
 	getAccess := accessMap.Access["get"]
 	testutil.AssertEqual(t, 1, len(getAccess), "one user can get pods")
 	if len(getAccess) > 0 {
 		testutil.AssertEqual(t, "reader", getAccess[0].Subject.Name, "reader can get pods")
 	}
-	
+
 	createAccess := accessMap.Access["create"]
 	testutil.AssertEqual(t, 1, len(createAccess), "one user can create pods")
 	if len(createAccess) > 0 {
@@ -429,7 +429,7 @@ func TestGetResourceAccess(t *testing.T) {
 
 func TestRuleMatches(t *testing.T) {
 	mapper := &PermissionMapper{}
-	
+
 	tests := []struct {
 		name     string
 		rule     PolicyRuleAnalysis
@@ -523,7 +523,7 @@ func TestRuleMatches(t *testing.T) {
 			expected: false,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := mapper.ruleMatches(tt.rule, tt.verb, tt.resource, tt.apiGroup)
@@ -534,7 +534,7 @@ func TestRuleMatches(t *testing.T) {
 
 func TestMatchesResource(t *testing.T) {
 	mapper := &PermissionMapper{}
-	
+
 	tests := []struct {
 		name           string
 		ruleResources  []string
@@ -572,7 +572,7 @@ func TestMatchesResource(t *testing.T) {
 			expected:       false,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := mapper.matchesResource(tt.ruleResources, tt.targetResource)
@@ -583,7 +583,7 @@ func TestMatchesResource(t *testing.T) {
 
 func TestMatchesAPIGroup(t *testing.T) {
 	mapper := &PermissionMapper{}
-	
+
 	tests := []struct {
 		name           string
 		ruleAPIGroups  []string
@@ -621,7 +621,7 @@ func TestMatchesAPIGroup(t *testing.T) {
 			expected:       false,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := mapper.matchesAPIGroup(tt.ruleAPIGroups, tt.targetAPIGroup)
@@ -632,12 +632,12 @@ func TestMatchesAPIGroup(t *testing.T) {
 
 func TestAnalyzeEscalationRisk(t *testing.T) {
 	mapper := &PermissionMapper{}
-	
+
 	tests := []struct {
-		name         string
-		permissions  SubjectPermissions
-		expectRisks  int
-		expectTypes  []string
+		name        string
+		permissions SubjectPermissions
+		expectRisks int
+		expectTypes []string
 	}{
 		{
 			name: "escalate verb",
@@ -746,12 +746,12 @@ func TestAnalyzeEscalationRisk(t *testing.T) {
 			expectTypes: []string{},
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			risks := mapper.analyzeEscalationRisk(tt.permissions)
 			testutil.AssertEqual(t, tt.expectRisks, len(risks), "number of risks")
-			
+
 			// Check that expected risk types are present
 			for _, expectedType := range tt.expectTypes {
 				found := false
@@ -771,7 +771,7 @@ func TestAnalyzeEscalationRisk(t *testing.T) {
 
 func TestGetRiskPriority(t *testing.T) {
 	mapper := &PermissionMapper{}
-	
+
 	tests := []struct {
 		level    RiskLevel
 		expected int
@@ -782,7 +782,7 @@ func TestGetRiskPriority(t *testing.T) {
 		{RiskLevelLow, riskPriorityLow},
 		{RiskLevel("unknown"), riskPriorityDefault},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(string(tt.level), func(t *testing.T) {
 			result := mapper.getRiskPriority(tt.level)
@@ -793,15 +793,15 @@ func TestGetRiskPriority(t *testing.T) {
 
 func TestConvertSubject(t *testing.T) {
 	mapper := &PermissionMapper{}
-	
+
 	subject := rbacv1.Subject{
 		Kind:      "ServiceAccount",
 		Name:      "default",
 		Namespace: "kube-system",
 	}
-	
+
 	result := mapper.convertSubject(subject)
-	
+
 	testutil.AssertEqual(t, subject.Kind, result.Kind, "subject kind")
 	testutil.AssertEqual(t, subject.Name, result.Name, "subject name")
 	testutil.AssertEqual(t, subject.Namespace, result.Namespace, "subject namespace")
@@ -809,7 +809,7 @@ func TestConvertSubject(t *testing.T) {
 
 func TestGetMatchReason(t *testing.T) {
 	mapper := &PermissionMapper{}
-	
+
 	tests := []struct {
 		name     string
 		rule     PolicyRuleAnalysis
@@ -867,7 +867,7 @@ func TestGetMatchReason(t *testing.T) {
 			contains: "explicit permission match",
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			reason := mapper.getMatchReason(tt.rule, tt.verb, tt.resource, tt.apiGroup)

@@ -1,4 +1,4 @@
-package parser
+package parser_test
 
 import (
 	"errors"
@@ -7,12 +7,14 @@ import (
 	"strings"
 	"testing"
 
-	rbacv1 "k8s.io/api/rbac/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
+	rbacv1 "k8s.io/api/rbac/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"github.com/coolguy1771/guardrail/internal/testutil"
+	"github.com/coolguy1771/guardrail/pkg/parser"
 )
 
 const validRoleYAML = `
@@ -145,19 +147,19 @@ rules: []
 `
 
 func TestNew(t *testing.T) {
-	p := New()
+	p := parser.New()
 	testutil.AssertNotNil(t, p, "New() should return non-nil parser")
-	testutil.AssertNotNil(t, p.decoder, "parser should have decoder")
+	// Cannot test unexported field decoder in external test package
 }
 
 func TestParse_ValidRole(t *testing.T) {
-	p := New()
+	p := parser.New()
 	reader := strings.NewReader(validRoleYAML)
-	
+
 	objects, err := p.Parse(reader)
 	testutil.AssertNil(t, err, "Parse should not return error for valid YAML")
 	testutil.AssertEqual(t, 1, len(objects), "should parse 1 object")
-	
+
 	if len(objects) > 0 {
 		role, ok := objects[0].(*rbacv1.Role)
 		if !ok {
@@ -170,13 +172,13 @@ func TestParse_ValidRole(t *testing.T) {
 }
 
 func TestParse_ValidClusterRole(t *testing.T) {
-	p := New()
+	p := parser.New()
 	reader := strings.NewReader(validClusterRoleYAML)
-	
+
 	objects, err := p.Parse(reader)
 	testutil.AssertNil(t, err, "Parse should not return error")
 	testutil.AssertEqual(t, 1, len(objects), "should parse 1 object")
-	
+
 	if len(objects) > 0 {
 		cr, ok := objects[0].(*rbacv1.ClusterRole)
 		if !ok {
@@ -188,13 +190,13 @@ func TestParse_ValidClusterRole(t *testing.T) {
 }
 
 func TestParse_ValidRoleBinding(t *testing.T) {
-	p := New()
+	p := parser.New()
 	reader := strings.NewReader(validRoleBindingYAML)
-	
+
 	objects, err := p.Parse(reader)
 	testutil.AssertNil(t, err, "Parse should not return error")
 	testutil.AssertEqual(t, 1, len(objects), "should parse 1 object")
-	
+
 	if len(objects) > 0 {
 		rb, ok := objects[0].(*rbacv1.RoleBinding)
 		if !ok {
@@ -207,13 +209,13 @@ func TestParse_ValidRoleBinding(t *testing.T) {
 }
 
 func TestParse_ValidClusterRoleBinding(t *testing.T) {
-	p := New()
+	p := parser.New()
 	reader := strings.NewReader(validClusterRoleBindingYAML)
-	
+
 	objects, err := p.Parse(reader)
 	testutil.AssertNil(t, err, "Parse should not return error")
 	testutil.AssertEqual(t, 1, len(objects), "should parse 1 object")
-	
+
 	if len(objects) > 0 {
 		crb, ok := objects[0].(*rbacv1.ClusterRoleBinding)
 		if !ok {
@@ -225,13 +227,13 @@ func TestParse_ValidClusterRoleBinding(t *testing.T) {
 }
 
 func TestParse_MultiDocument(t *testing.T) {
-	p := New()
+	p := parser.New()
 	reader := strings.NewReader(multiDocumentYAML)
-	
+
 	objects, err := p.Parse(reader)
 	testutil.AssertNil(t, err, "Parse should not return error")
 	testutil.AssertEqual(t, 2, len(objects), "should parse 2 objects")
-	
+
 	// Check both roles
 	for i, obj := range objects {
 		role, ok := obj.(*rbacv1.Role)
@@ -244,26 +246,26 @@ func TestParse_MultiDocument(t *testing.T) {
 }
 
 func TestParse_NonRBAC(t *testing.T) {
-	p := New()
+	p := parser.New()
 	reader := strings.NewReader(nonRBACYAML)
-	
+
 	objects, err := p.Parse(reader)
 	testutil.AssertNil(t, err, "Parse should not return error")
 	testutil.AssertEqual(t, 0, len(objects), "should parse 0 RBAC objects")
 }
 
 func TestParse_Mixed(t *testing.T) {
-	p := New()
+	p := parser.New()
 	reader := strings.NewReader(mixedYAML)
-	
+
 	objects, err := p.Parse(reader)
 	testutil.AssertNil(t, err, "Parse should not return error")
 	testutil.AssertEqual(t, 2, len(objects), "should parse 2 RBAC objects (ignoring ConfigMap)")
-	
+
 	// Check that we got the right types
 	roleFound := false
 	clusterRoleFound := false
-	
+
 	for _, obj := range objects {
 		switch obj.(type) {
 		case *rbacv1.Role:
@@ -272,7 +274,7 @@ func TestParse_Mixed(t *testing.T) {
 			clusterRoleFound = true
 		}
 	}
-	
+
 	if !roleFound {
 		t.Error("expected to find Role")
 	}
@@ -282,9 +284,9 @@ func TestParse_Mixed(t *testing.T) {
 }
 
 func TestParse_InvalidYAML(t *testing.T) {
-	p := New()
+	p := parser.New()
 	reader := strings.NewReader(invalidYAML)
-	
+
 	_, err := p.Parse(reader)
 	testutil.AssertNotNil(t, err, "Parse should return error for invalid YAML")
 	if err != nil && !strings.Contains(err.Error(), "failed to decode YAML") {
@@ -293,18 +295,18 @@ func TestParse_InvalidYAML(t *testing.T) {
 }
 
 func TestParse_EmptyDocuments(t *testing.T) {
-	p := New()
+	p := parser.New()
 	reader := strings.NewReader(emptyDocumentYAML)
-	
+
 	objects, err := p.Parse(reader)
 	testutil.AssertNil(t, err, "Parse should not return error")
 	testutil.AssertEqual(t, 1, len(objects), "should parse 1 object (ignoring empty documents)")
 }
 
 func TestParse_EmptyReader(t *testing.T) {
-	p := New()
+	p := parser.New()
 	reader := strings.NewReader("")
-	
+
 	objects, err := p.Parse(reader)
 	testutil.AssertNil(t, err, "Parse should not return error for empty input")
 	testutil.AssertEqual(t, 0, len(objects), "should parse 0 objects")
@@ -312,27 +314,27 @@ func TestParse_EmptyReader(t *testing.T) {
 
 func TestParseFile(t *testing.T) {
 	// Create a temporary file with valid YAML
-	tmpfile, err := os.CreateTemp("", "test-*.yaml")
+	tmpfile, err := os.CreateTemp(t.TempDir(), "test-*.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer os.Remove(tmpfile.Name())
-	
-	if _, err := tmpfile.Write([]byte(validRoleYAML)); err != nil {
-		t.Fatal(err)
+
+	if _, writeErr := tmpfile.WriteString(validRoleYAML); writeErr != nil {
+		t.Fatal(writeErr)
 	}
-	if err := tmpfile.Close(); err != nil {
-		t.Fatal(err)
+	if closeErr := tmpfile.Close(); closeErr != nil {
+		t.Fatal(closeErr)
 	}
-	
-	p := New()
+
+	p := parser.New()
 	objects, err := p.ParseFile(tmpfile.Name())
 	testutil.AssertNil(t, err, "ParseFile should not return error")
 	testutil.AssertEqual(t, 1, len(objects), "should parse 1 object")
 }
 
 func TestParseFile_NonExistent(t *testing.T) {
-	p := New()
+	p := parser.New()
 	_, err := p.ParseFile("/non/existent/file.yaml")
 	testutil.AssertNotNil(t, err, "ParseFile should return error for non-existent file")
 	if err != nil && !strings.Contains(err.Error(), "failed to open file") {
@@ -372,10 +374,10 @@ func TestGetObjectKind(t *testing.T) {
 			expected: "Unknown",
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := GetObjectKind(tt.object)
+			result := parser.GetObjectKind(tt.object)
 			testutil.AssertEqual(t, tt.expected, result, "object kind")
 		})
 	}
@@ -419,11 +421,11 @@ func TestGetObjectGVK(t *testing.T) {
 			isEmpty:      true,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := GetObjectGVK(tt.object)
-			
+			result := parser.GetObjectGVK(tt.object)
+
 			if tt.isEmpty {
 				if result != (schema.GroupVersionKind{}) {
 					t.Errorf("expected empty GVK, got %v", result)
@@ -437,15 +439,15 @@ func TestGetObjectGVK(t *testing.T) {
 	}
 }
 
-// Custom reader that returns an error after some data
+// Custom reader that returns an error after some data.
 type errorReader struct {
 	data []byte
 	err  error
 }
 
-func (r *errorReader) Read(p []byte) (n int, err error) {
+func (r *errorReader) Read(p []byte) (int, error) {
 	if len(r.data) > 0 {
-		n = copy(p, r.data)
+		n := copy(p, r.data)
 		r.data = r.data[n:]
 		return n, nil
 	}
@@ -453,12 +455,12 @@ func (r *errorReader) Read(p []byte) (n int, err error) {
 }
 
 func TestParse_ReaderError(t *testing.T) {
-	p := New()
+	p := parser.New()
 	reader := &errorReader{
 		data: []byte("invalid: yaml: content:"),
 		err:  errors.New("read error"),
 	}
-	
+
 	_, err := p.Parse(reader)
 	testutil.AssertNotNil(t, err, "Parse should return error when reader fails")
 }
