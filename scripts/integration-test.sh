@@ -36,13 +36,13 @@ run_test() {
     # Run command and capture output, ignoring exit code
     output=$($cmd 2>&1) || true
     
-    if echo "$output" | grep -q "$expected_pattern"; then
+    if echo "$output" | grep -qE "$expected_pattern"; then
         echo -e "${GREEN}PASSED${NC}"
         TESTS_PASSED=$((TESTS_PASSED + 1))
     else
         echo -e "${RED}FAILED${NC}"
         echo "Expected pattern: $expected_pattern"
-        echo "Got first 500 chars of output: $(echo "$output" | head -c 500)"
+        echo "Got first 500 chars of output: ${output:0:500}"
         TESTS_FAILED=$((TESTS_FAILED + 1))
     fi
 }
@@ -59,13 +59,13 @@ run_test_expect_failure() {
         echo -e "${RED}FAILED${NC} (expected command to fail)"
         TESTS_FAILED=$((TESTS_FAILED + 1))
     else
-        if echo "$output" | grep -q "$expected_pattern"; then
+        if echo "$output" | grep -qE "$expected_pattern"; then
             echo -e "${GREEN}PASSED${NC}"
             TESTS_PASSED=$((TESTS_PASSED + 1))
         else
             echo -e "${RED}FAILED${NC}"
             echo "Expected error pattern: $expected_pattern"
-            echo "Got output: $output"
+            echo "Got output: ${output:0:500}"
             TESTS_FAILED=$((TESTS_FAILED + 1))
         fi
     fi
@@ -100,7 +100,7 @@ run_test "Validate good role" "$BINARY validate -f testdata/good-role.yaml" "No 
 run_test "Validate wildcard role" "$BINARY validate -f testdata/role-with-wildcard.yaml" "RBAC001"
 run_test "Validate secrets access" "$BINARY validate -f testdata/role-secrets-access.yaml" "RBAC003"
 run_test "Validate cluster admin" "$BINARY validate -f testdata/clusterrolebinding-admin.yaml" "RBAC002"
-run_test "Validate directory" "$BINARY validate -d testdata/" "issue(s)"
+run_test "Validate directory" "$BINARY validate -d testdata/" "Found.*issue\(s\)"
 
 # Test output formats
 info "Testing output formats..."
