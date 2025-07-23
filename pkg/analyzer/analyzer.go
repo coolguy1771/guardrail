@@ -271,6 +271,7 @@ func (a *Analyzer) analyzeRoleBinding(
 						BindingKind: "RoleBinding",
 					},
 				},
+				RiskLevel: RiskLevelLow, // Default to low risk for missing roles
 			})
 		}
 		return result
@@ -302,6 +303,7 @@ func (a *Analyzer) analyzeRoleBinding(
 					BindingKind: "RoleBinding",
 				},
 			},
+			RiskLevel: RiskLevelLow, // Will be calculated later in consolidatePermissions
 		})
 	}
 
@@ -327,12 +329,14 @@ func (a *Analyzer) analyzeClusterRoleBinding(
 					{
 						RoleName:    binding.RoleRef.Name,
 						RoleKind:    binding.RoleRef.Kind,
+						Namespace:   "", // Cluster-wide binding has no namespace
 						Scope:       "cluster-wide",
 						Rules:       []PolicyRuleAnalysis{},
 						BindingName: binding.Name,
 						BindingKind: "ClusterRoleBinding",
 					},
 				},
+				RiskLevel: RiskLevelLow, // Default to low risk for missing roles
 			})
 		}
 		return result
@@ -353,12 +357,14 @@ func (a *Analyzer) analyzeClusterRoleBinding(
 				{
 					RoleName:    binding.RoleRef.Name,
 					RoleKind:    binding.RoleRef.Kind,
+					Namespace:   "", // Cluster-wide binding has no namespace
 					Scope:       "cluster-wide",
 					Rules:       analyzedRules,
 					BindingName: binding.Name,
 					BindingKind: "ClusterRoleBinding",
 				},
 			},
+			RiskLevel: RiskLevelLow, // Will be calculated later in consolidatePermissions
 		})
 	}
 
@@ -371,11 +377,14 @@ func (a *Analyzer) analyzeRules(rules []rbacv1.PolicyRule) []PolicyRuleAnalysis 
 
 	for _, rule := range rules {
 		analysis := PolicyRuleAnalysis{
-			APIGroups:       rule.APIGroups,
-			Resources:       rule.Resources,
-			Verbs:           rule.Verbs,
-			ResourceNames:   rule.ResourceNames,
-			NonResourceURLs: rule.NonResourceURLs,
+			APIGroups:        rule.APIGroups,
+			Resources:        rule.Resources,
+			Verbs:            rule.Verbs,
+			ResourceNames:    rule.ResourceNames,
+			NonResourceURLs:  rule.NonResourceURLs,
+			HumanReadable:    "",                                                                  // Will be set below
+			SecurityImpact:   SecurityImpact{Level: RiskLevelLow, Description: "", Concerns: nil}, // Will be set below
+			VerbExplanations: nil,                                                                 // Will be set below
 		}
 
 		// Generate human-readable explanation

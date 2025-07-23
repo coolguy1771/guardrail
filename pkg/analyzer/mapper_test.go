@@ -339,25 +339,15 @@ func TestGetPrivilegeEscalationPaths(t *testing.T) {
 	testutil.AssertEqual(t, 2, len(paths), "number of escalation paths")
 
 	// Check the types of risks found
-	foundEscalate := false
-	foundImpersonate := false
+	riskTypes := make(map[string]int)
 	for _, path := range paths {
 		for _, risk := range path.Risks {
-			if risk.Type == "Privilege Escalation" {
-				foundEscalate = true
-			}
-			if risk.Type == "Identity Impersonation" {
-				foundImpersonate = true
-			}
+			riskTypes[risk.Type]++
 		}
 	}
 
-	if !foundEscalate {
-		t.Error("expected to find privilege escalation risk")
-	}
-	if !foundImpersonate {
-		t.Error("expected to find identity impersonation risk")
-	}
+	testutil.AssertEqual(t, 1, riskTypes["Privilege Escalation"], "expected one privilege escalation risk")
+	testutil.AssertEqual(t, 1, riskTypes["Identity Impersonation"], "expected one impersonation risk")
 }
 
 func TestGetResourceAccess(t *testing.T) {

@@ -1,6 +1,7 @@
 package validator //nolint:testpackage // Uses internal validator fields for testing
 
 import (
+	"strings"
 	"testing"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -15,7 +16,10 @@ func TestNew(t *testing.T) {
 	v := New()
 	testutil.AssertNotNil(t, v, "New() should return a non-nil validator")
 	testutil.AssertNotNil(t, v.rules, "validator should have rules")
-	testutil.AssertEqual(t, 14, len(v.rules), "validator should have 14 default rules")
+
+	// Expected rule count: 4 original rules + 10 NIST SP 800-190 rules
+	expectedRuleCount := len(defaultRules())
+	testutil.AssertEqual(t, expectedRuleCount, len(v.rules), "validator should have expected number of default rules")
 }
 
 func TestNewWithRules(t *testing.T) {
@@ -133,9 +137,11 @@ func TestValidateAll(t *testing.T) {
 	v := New()
 	findings := v.ValidateAll(objects)
 
-	// Debug: print all findings
-	for i, f := range findings {
-		t.Logf("Finding %d: RuleID=%s, Resource=%s, Message=%s", i, f.RuleID, f.Resource, f.Message)
+	// Print findings only when test fails to aid debugging
+	if t.Failed() {
+		for i, f := range findings {
+			t.Logf("Finding %d: RuleID=%s, Resource=%s, Message=%s", i, f.RuleID, f.Resource, f.Message)
+		}
 	}
 
 	// The ClusterRole only has namespace-scoped resources (secrets) so RBAC004 triggers too
@@ -200,8 +206,8 @@ func TestValidateWildcardPermissions(t *testing.T) {
 				for _, finding := range findings {
 					testutil.AssertEqual(t, "RBAC001", finding.RuleID, "unexpected rule ID")
 					testutil.AssertEqual(t, SeverityHigh, finding.Severity, "unexpected severity")
-					if tt.expectedMsg != "" && finding.Message == "" {
-						t.Errorf("expected message to contain '%s', but got empty", tt.expectedMsg)
+					if tt.expectedMsg != "" && !strings.Contains(finding.Message, tt.expectedMsg) {
+						t.Errorf("expected message to contain '%s', but got '%s'", tt.expectedMsg, finding.Message)
 					}
 				}
 			}
@@ -524,13 +530,15 @@ func TestSeverityConstants(t *testing.T) {
 
 func TestDefaultRules(t *testing.T) {
 	rules := defaultRules()
-	testutil.AssertEqual(t, 14, len(rules), "expected 14 default rules")
 
+	// Define expected rules: 4 original + 10 NIST SP 800-190 rules
 	expectedRules := map[string]string{
+		// Original rules
 		"RBAC001": "Avoid Wildcard Permissions",
 		"RBAC002": "Avoid Cluster-Admin Binding",
 		"RBAC003": "Avoid Secrets Access",
 		"RBAC004": "Prefer Namespaced Roles",
+		// NIST SP 800-190 rules
 		"RBAC005": "Avoid Service Account Token Automounting",
 		"RBAC006": "Restrict Exec and Attach Permissions",
 		"RBAC007": "Limit Impersonation Privileges",
@@ -543,6 +551,10 @@ func TestDefaultRules(t *testing.T) {
 		"RBAC014": "Restrict TokenRequest and CertificateSigningRequest",
 	}
 
+	// Verify count matches expected
+	testutil.AssertEqual(t, len(expectedRules), len(rules), "number of default rules")
+
+	// Verify each rule
 	for _, rule := range rules {
 		expectedName, ok := expectedRules[rule.ID]
 		if !ok {
@@ -551,5 +563,19 @@ func TestDefaultRules(t *testing.T) {
 		}
 		testutil.AssertEqual(t, expectedName, rule.Name, "rule name for "+rule.ID)
 		testutil.AssertNotNil(t, rule.Validate, "validate function for "+rule.ID)
+	}
+
+	// Verify all expected rules are present
+	for ruleID := range expectedRules {
+		found := false
+		for _, rule := range rules {
+			if rule.ID == ruleID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected rule %s not found in default rules", ruleID)
+		}
 	}
 }

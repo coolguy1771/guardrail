@@ -122,11 +122,13 @@ func getValidateTestCases(files validateTestFiles) []validateTestCase {
 			name:        "missing file and dir flags",
 			args:        []string{"guardrail", "validate"},
 			expectError: true,
+			checkOutput: nil,
 		},
 		{
 			name:        "both file and dir flags",
 			args:        []string{"guardrail", "validate", "--file", files.validFile, "--dir", files.tmpDir},
 			expectError: true,
+			checkOutput: nil,
 		},
 		{
 			name:        "validate single file",
@@ -144,6 +146,7 @@ func getValidateTestCases(files validateTestFiles) []validateTestCase {
 			name:        "non-existent file",
 			args:        []string{"guardrail", "validate", "--file", "/non/existent/file.yaml"},
 			expectError: true,
+			checkOutput: nil,
 		},
 		{
 			name:        "non-existent directory",

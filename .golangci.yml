@@ -272,8 +272,12 @@ linters:
         - ^k8s.io/api/.+$
         - ^k8s.io/apimachinery/.+$
         - ^k8s.io/client-go/.+$
-        # project types
-        - ^github.com/coolguy1771/guardrail/.+$
+        # test structs - anonymous structs in table-driven tests often have optional fields
+        - ^github.com/coolguy1771/guardrail/.+\.<anonymous>$
+        # specific types where zero values are intentional
+        - ^github.com/coolguy1771/guardrail/pkg/analyzer\.Analyzer$
+        # mock types in tests
+        - ^github.com/coolguy1771/guardrail/.+\.mock.+$
 
     funcorder:
       # Checks if the exported methods of a structure are placed before the non-exported ones.
@@ -441,6 +445,9 @@ linters:
     rules:
       - source: 'TODO'
         linters: [ godot ]
+      # Disable exhaustruct for test files where partial struct initialization is common
+      - path: '_test\.go'
+        linters: [ exhaustruct ]
       - text: 'should have a package comment'
         linters: [ revive ]
       - text: 'exported \S+ \S+ should have comment( \(or a comment on this block\))? or be unexported'

@@ -536,9 +536,11 @@ func TestAnalyze_Imports(t *testing.T) {
 
 	// Import check for analyzer types
 	perm := analyzer.SubjectPermissions{
-		Subject:   subject,
-		RiskLevel: analyzer.RiskLevelLow,
+		Subject:     subject,
+		Permissions: []analyzer.PermissionGrant{},
+		RiskLevel:   analyzer.RiskLevelLow,
 	}
 	testutil.AssertEqual(t, analyzer.RiskLevelLow, perm.RiskLevel, "analyzer types should work")
 	testutil.AssertEqual(t, "test", perm.Subject.Name, "subject should be set correctly")
+	testutil.AssertEqual(t, 0, len(perm.Permissions), "permissions should be empty")
 }

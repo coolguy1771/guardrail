@@ -273,9 +273,23 @@ func checkSingleRule(rule rbacv1.PolicyRule, check resourceVerbCheck, name, name
 	return createFindingsForResources(rule.Resources, check, verbInfo.count, name, namespace, kind)
 }
 
-// verbMatchInfo holds information about matching verbs.
+// verbMatchInfo encapsulates the result of analyzing RBAC verbs to determine
+// how many security findings should be generated per resource.
+//
+// This type is used by the NIST RBAC validation rules to handle the special
+// case where wildcard verbs ("*") should generate only one finding per resource,
+// while explicit verb matches (e.g., ["create", "update"]) should generate one
+// finding for each matching verb.
+//
+// For example:
+//   - Rule with verbs ["*"] matching ["create", "update", "delete"] → count = 1
+//   - Rule with verbs ["create", "update"] matching ["create", "update", "delete"] → count = 2
 type verbMatchInfo struct {
-	count int // Number of findings to create per resource
+	// count represents the number of findings to create for each matching resource.
+	// When a wildcard verb is present, this will always be 1 regardless of how many
+	// target verbs are being checked. For explicit verb matches, this equals the
+	// number of verbs that match between the rule and the validation criteria.
+	count int
 }
 
 // getMatchingVerbInfo analyzes verbs and returns match information.

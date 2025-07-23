@@ -450,6 +450,10 @@ type AnalysisSummary struct {
 func getSummary(permissions []analyzer.SubjectPermissions) AnalysisSummary {
 	summary := AnalysisSummary{
 		TotalSubjects: len(permissions),
+		CriticalRisk:  0,
+		HighRisk:      0,
+		MediumRisk:    0,
+		LowRisk:       0,
 	}
 
 	for _, perm := range permissions {
