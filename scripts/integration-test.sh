@@ -71,63 +71,74 @@ run_test_expect_failure() {
     fi
 }
 
-# Build the binary if not in CI or if binary doesn't exist
-if [ ! -f "./guardrail" ] && [ ! -f "./build/guardrail" ]; then
+# Determine the binary path
+if [ -f "./guardrail" ]; then
+    BINARY="./guardrail"
+elif [ -f "./build/guardrail" ]; then
+    BINARY="./build/guardrail"
+elif [ -f "./guardrail-linux-amd64" ]; then
+    BINARY="./guardrail-linux-amd64"
+else
     info "Building guardrail..."
     go build -o guardrail ./cmd/guardrail
-else
-    info "Using existing guardrail binary..."
-    # If binary is in build directory, copy it to current directory
-    if [ -f "./build/guardrail" ] && [ ! -f "./guardrail" ]; then
-        cp ./build/guardrail ./guardrail
-    fi
+    BINARY="./guardrail"
 fi
+
+info "Using binary: $BINARY"
 
 # Start integration tests
 info "Starting integration tests..."
 
 # Test help commands
-run_test "Help command" "./guardrail --help" "Available Commands:"
-run_test "Validate help" "./guardrail validate --help" "Validate Kubernetes RBAC manifests"
-run_test "Analyze help" "./guardrail analyze --help" "Analyze RoleBindings and ClusterRoleBindings"
+run_test "Help command" "$BINARY --help" "Available Commands:"
+run_test "Validate help" "$BINARY validate --help" "Validate Kubernetes RBAC manifests"
+run_test "Analyze help" "$BINARY analyze --help" "Analyze RoleBindings and ClusterRoleBindings"
 
 # Test validate command
 info "Testing validate command..."
-run_test "Validate good role" "./guardrail validate -f testdata/good-role.yaml" "No issues found"
-run_test "Validate wildcard role" "./guardrail validate -f testdata/role-with-wildcard.yaml" "RBAC001"
-run_test "Validate secrets access" "./guardrail validate -f testdata/role-secrets-access.yaml" "RBAC003"
-run_test "Validate cluster admin" "./guardrail validate -f testdata/clusterrolebinding-admin.yaml" "RBAC002"
-run_test "Validate directory" "./guardrail validate -d testdata/" "issue(s)"
+run_test "Validate good role" "$BINARY validate -f testdata/good-role.yaml" "No issues found"
+run_test "Validate wildcard role" "$BINARY validate -f testdata/role-with-wildcard.yaml" "RBAC001"
+run_test "Validate secrets access" "$BINARY validate -f testdata/role-secrets-access.yaml" "RBAC003"
+run_test "Validate cluster admin" "$BINARY validate -f testdata/clusterrolebinding-admin.yaml" "RBAC002"
+run_test "Validate directory" "$BINARY validate -d testdata/" "issue(s)"
 
 # Test output formats
 info "Testing output formats..."
-run_test "JSON output" "./guardrail validate -f testdata/role-with-wildcard.yaml -o json" '"Severity": "HIGH"'
-run_test "SARIF output" "./guardrail validate -f testdata/role-with-wildcard.yaml -o sarif" '"version": "2.1.0"'
+run_test "JSON output" "$BINARY validate -f testdata/role-with-wildcard.yaml -o json" '"Severity": "HIGH"'
+run_test "SARIF output" "$BINARY validate -f testdata/role-with-wildcard.yaml -o sarif" '"version": "2.1.0"'
 
 # Test analyze command
 info "Testing analyze command..."
-run_test "Analyze complex RBAC" "./guardrail analyze -f testdata/complex-rbac.yaml" "Risk Level"
-run_test "Analyze with roles" "./guardrail analyze -f testdata/complex-rbac.yaml --show-roles" "Detailed Permissions"
-run_test "Analyze directory" "./guardrail analyze -d testdata/" "Risk Level"
+run_test "Analyze complex RBAC" "$BINARY analyze -f testdata/complex-rbac.yaml" "Risk Level"
+run_test "Analyze with roles" "$BINARY analyze -f testdata/complex-rbac.yaml --show-roles" "Detailed Permissions"
+run_test "Analyze directory" "$BINARY analyze -d testdata/" "Risk Level"
 
 # Test filtering
 info "Testing filtering options..."
-run_test "Filter by risk level" "./guardrail analyze -f testdata/complex-rbac.yaml --risk-level high" "Risk Level: HIGH"
-run_test "Filter by subject" "./guardrail analyze -f testdata/complex-rbac.yaml --subject admin@company.com" "admin@company.com"
+run_test "Filter by risk level" "$BINARY analyze -f testdata/complex-rbac.yaml --risk-level high" "Risk Level: HIGH"
+run_test "Filter by subject" "$BINARY analyze -f testdata/complex-rbac.yaml --subject admin@company.com" "admin@company.com"
 
 # Test error cases
 info "Testing error handling..."
-run_test_expect_failure "Missing file" "./guardrail validate -f nonexistent.yaml" "no such file"
-run_test "Invalid output format defaults to text" "./guardrail validate -f testdata/good-role.yaml -o invalid" "No issues found"
-run_test_expect_failure "No input specified" "./guardrail validate" "either --file or --dir must be specified"
+run_test_expect_failure "Missing file" "$BINARY validate -f nonexistent.yaml" "no such file"
+run_test "Invalid output format defaults to text" "$BINARY validate -f testdata/good-role.yaml -o invalid" "No issues found"
+run_test_expect_failure "No input specified" "$BINARY validate" "either --file or --dir must be specified"
 
-# If kubectl is available and we have a valid kubeconfig, test cluster integration
-if command -v kubectl &> /dev/null && kubectl config current-context &> /dev/null; then
+# Test cluster integration only if explicitly enabled or if we can verify cluster access
+if [ "${ENABLE_CLUSTER_TESTS:-false}" = "true" ]; then
+    info "Cluster tests explicitly enabled via ENABLE_CLUSTER_TESTS=true"
     info "Testing cluster integration..."
-    run_test "Analyze cluster" "./guardrail analyze --cluster" "Subject Permissions"
-    run_test "Analyze cluster with filter" "./guardrail analyze --cluster --risk-level high" "Risk Level"
+    run_test "Analyze cluster" "$BINARY analyze --cluster" "Subject Permissions"
+    run_test "Analyze cluster with filter" "$BINARY analyze --cluster --risk-level high" "Risk Level"
+elif command -v kubectl &> /dev/null && kubectl get nodes &> /dev/null 2>&1; then
+    info "Cluster detected, running cluster integration tests..."
+    run_test "Analyze cluster" "$BINARY analyze --cluster" "Subject Permissions"
+    run_test "Analyze cluster with filter" "$BINARY analyze --cluster --risk-level high" "Risk Level"
 else
-    info "Skipping cluster integration tests (no kubeconfig available)"
+    info "Skipping cluster integration tests (no cluster access detected)"
+    if command -v kubectl &> /dev/null; then
+        warn "kubectl is available but cluster access failed"
+    fi
 fi
 
 # Summary

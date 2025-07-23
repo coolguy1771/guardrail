@@ -91,7 +91,11 @@ func (c *Client) GetRBACReader() RBACReader {
 // getConfigWithContext loads a Kubernetes REST config from the specified kubeconfig file, optionally overriding the current context.
 // Returns the configured *rest.Config or an error if loading fails.
 func getConfigWithContext(kubeconfig, contextName string) (*rest.Config, error) {
-	loadingRules := &clientcmd.ClientConfigLoadingRules{ExplicitPath: kubeconfig}
+	// If kubeconfig is empty, use default loading rules (which checks KUBECONFIG env var and default locations)
+	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+	if kubeconfig != "" {
+		loadingRules.ExplicitPath = kubeconfig
+	}
 
 	configOverrides := &clientcmd.ConfigOverrides{}
 	if contextName != "" {
