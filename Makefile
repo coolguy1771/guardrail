@@ -55,9 +55,9 @@ cov-pr:
 	fi
 
 # Run integration tests
-test-integration:
+test-integration: build
 	@echo "Running integration tests..."
-	@./scripts/integration-test.sh
+	@bash ./scripts/integration-test.sh
 
 # Run benchmarks
 test-bench:
@@ -100,6 +100,18 @@ run-example:
 	@echo "Running guardrail on example files..."
 	@go run $(CMD_PATH) validate -d testdata/
 
+# Run all tests (unit + integration)
+test-all: test test-integration
+	@echo "All tests passed!"
+
+# Quick smoke test
+test-quick: build
+	@echo "Running quick smoke tests..."
+	@$(BINARY_PATH) validate -f testdata/good-role.yaml
+	@$(BINARY_PATH) validate -f testdata/role-with-wildcard.yaml || true
+	@$(BINARY_PATH) analyze -f testdata/complex-rbac.yaml
+	@echo "Smoke tests passed!"
+
 # Run all checks before commit
 pre-commit: fmt tidy lint test
 	@echo "All pre-commit checks passed!"
@@ -112,6 +124,8 @@ help:
 	@echo "  test               - Run tests with race detection"
 	@echo "  test-coverage      - Run tests with coverage report"
 	@echo "  test-integration   - Run integration tests"
+	@echo "  test-all           - Run all tests (unit + integration)"
+	@echo "  test-quick         - Run quick smoke tests"
 	@echo "  test-bench         - Run benchmarks"
 	@echo "  test-pkg PKG=name  - Run tests for specific package"
 	@echo "  cov                - Check coverage with cov (70% threshold)"

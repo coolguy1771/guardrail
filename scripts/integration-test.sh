@@ -71,9 +71,17 @@ run_test_expect_failure() {
     fi
 }
 
-# Build the binary
-info "Building guardrail..."
-go build -o guardrail ./cmd/guardrail
+# Build the binary if not in CI or if binary doesn't exist
+if [ ! -f "./guardrail" ] && [ ! -f "./build/guardrail" ]; then
+    info "Building guardrail..."
+    go build -o guardrail ./cmd/guardrail
+else
+    info "Using existing guardrail binary..."
+    # If binary is in build directory, copy it to current directory
+    if [ -f "./build/guardrail" ] && [ ! -f "./guardrail" ]; then
+        cp ./build/guardrail ./guardrail
+    fi
+fi
 
 # Start integration tests
 info "Starting integration tests..."

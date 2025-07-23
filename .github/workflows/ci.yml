@@ -129,14 +129,17 @@ jobs:
           node_image: kindest/node:v${{ matrix.k8s-version }}.0
           cluster_name: kind
 
-      - name: Run integration tests against files
+      - name: Make integration test script executable
+        run: chmod +x scripts/integration-test.sh
+
+      - name: Run integration tests
         run: |
-          ./guardrail-linux-amd64 validate -d testdata/
-          ./guardrail-linux-amd64 validate -f testdata/good-role.yaml -o json | jq .
-          ./guardrail-linux-amd64 validate -f testdata/role-with-wildcard.yaml -o sarif | jq .
-          ./guardrail-linux-amd64 analyze -d testdata/
-          ./guardrail-linux-amd64 analyze -f testdata/complex-rbac.yaml --show-roles
-          ./guardrail-linux-amd64 analyze -f testdata/complex-rbac.yaml --risk-level critical -o json | jq .
+          # Copy downloaded binary to expected location
+          mkdir -p build
+          cp guardrail-linux-amd64 build/guardrail
+          chmod +x build/guardrail
+          # Run integration test script
+          bash scripts/integration-test.sh
 
       - name: Apply test RBAC to cluster
         run: kubectl apply -f testdata/
