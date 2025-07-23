@@ -107,6 +107,5 @@
       "depNameTemplate": "golang"
     }
   ],
-  "ignorePaths": ["**/testdata/**", "**/vendor/**", "**/examples/**"],
-  "ignoreDeps": ["go"]
+  "ignorePaths": ["**/testdata/**", "**/vendor/**", "**/examples/**"]
 }
