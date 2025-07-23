@@ -121,11 +121,13 @@ run_test_expect_failure "Missing file" "./guardrail validate -f nonexistent.yaml
 run_test "Invalid output format defaults to text" "./guardrail validate -f testdata/good-role.yaml -o invalid" "No issues found"
 run_test_expect_failure "No input specified" "./guardrail validate" "either --file or --dir must be specified"
 
-# If kubectl is available and we're in CI, test cluster integration
-if command -v kubectl &> /dev/null && [ "${CI:-false}" = "true" ]; then
+# If kubectl is available and we have a valid kubeconfig, test cluster integration
+if command -v kubectl &> /dev/null && kubectl config current-context &> /dev/null; then
     info "Testing cluster integration..."
     run_test "Analyze cluster" "./guardrail analyze --cluster" "Subject Permissions"
     run_test "Analyze cluster with filter" "./guardrail analyze --cluster --risk-level high" "Risk Level"
+else
+    info "Skipping cluster integration tests (no kubeconfig available)"
 fi
 
 # Summary
