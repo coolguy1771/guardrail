@@ -128,11 +128,11 @@ run_test_expect_failure "No input specified" "$BINARY validate" "either --file o
 if [ "${ENABLE_CLUSTER_TESTS:-false}" = "true" ]; then
     info "Cluster tests explicitly enabled via ENABLE_CLUSTER_TESTS=true"
     info "Testing cluster integration..."
-    run_test "Analyze cluster" "$BINARY analyze --cluster" "Subject Permissions"
+    run_test "Analyze cluster" "$BINARY analyze --cluster" "RBAC Analysis Summary"
     run_test "Analyze cluster with filter" "$BINARY analyze --cluster --risk-level high" "Risk Level"
 elif command -v kubectl &> /dev/null && kubectl get nodes &> /dev/null 2>&1; then
     info "Cluster detected, running cluster integration tests..."
-    run_test "Analyze cluster" "$BINARY analyze --cluster" "Subject Permissions"
+    run_test "Analyze cluster" "$BINARY analyze --cluster" "RBAC Analysis Summary"
     run_test "Analyze cluster with filter" "$BINARY analyze --cluster --risk-level high" "Risk Level"
 else
     info "Skipping cluster integration tests (no cluster access detected)"
