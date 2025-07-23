@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go test:*)",
+      "Bash(make lint:*)",
+      "Bash(gci write:*)",
+      "Bash(make lint:*)",
+      "Bash(find:*)",
+      "Bash(golangci-lint run:*)"
+    ],
+    "deny": []
+  }
+}

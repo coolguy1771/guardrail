@@ -346,21 +346,32 @@ rules:
 }
 
 // captureOutput captures stdout during function execution.
+// Uses a goroutine to read from the pipe to prevent blocking on Windows.
 func captureOutput(fn func() error) (string, error) {
 	oldStdout := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w //nolint:reassign // Required for capturing stdout in tests
 
+	// Start reading from pipe in a goroutine to prevent blocking.
+	// This is essential for Windows compatibility where pipes can block
+	// if the buffer fills up before being read.
+	outputChan := make(chan string)
+	go func() {
+		buf := new(bytes.Buffer)
+		_, _ = buf.ReadFrom(r)
+		outputChan <- buf.String()
+	}()
+
+	// Run the function
 	runErr := fn()
 
-	// Restore stdout
+	// Close writer and restore stdout
 	w.Close()
 	os.Stdout = oldStdout //nolint:reassign // Restore stdout after test
 
-	// Read output
-	buf := new(bytes.Buffer)
-	_, _ = buf.ReadFrom(r)
-	return buf.String(), runErr
+	// Wait for reader to finish
+	output := <-outputChan
+	return output, runErr
 }
 
 // validateOutputFormat checks if output matches expected format.
