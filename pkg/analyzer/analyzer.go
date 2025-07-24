@@ -23,7 +23,6 @@ type Analyzer struct {
 
 // NewAnalyzer returns a new Analyzer that uses the provided RBACReader to fetch RBAC resources from a live Kubernetes cluster.
 func NewAnalyzer(rbacReader kubernetes.RBACReader) *Analyzer {
-	//nolint:exhaustruct // objects field is intentionally nil for cluster-based analysis
 	return &Analyzer{
 		rbacReader: rbacReader,
 	}
@@ -31,7 +30,6 @@ func NewAnalyzer(rbacReader kubernetes.RBACReader) *Analyzer {
 
 // NewAnalyzerFromObjects returns a new Analyzer that uses the provided Kubernetes runtime objects for RBAC analysis instead of fetching data from a live cluster.
 func NewAnalyzerFromObjects(objects []runtime.Object) *Analyzer {
-	//nolint:exhaustruct // rbacReader field is intentionally nil for object-based analysis
 	return &Analyzer{
 		objects: objects,
 	}
@@ -166,7 +164,7 @@ func (a *Analyzer) fetchFromCluster(ctx context.Context) ([]runtime.Object, []ru
 
 	// Fetch RoleBindings
 	roleBindings, err := a.rbacReader.RoleBindings("").
-		List(ctx, metav1.ListOptions{}) //nolint:exhaustruct // K8s API struct
+		List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to fetch role bindings: %w", err)
 	}
@@ -176,7 +174,7 @@ func (a *Analyzer) fetchFromCluster(ctx context.Context) ([]runtime.Object, []ru
 
 	// Fetch ClusterRoleBindings
 	clusterRoleBindings, err := a.rbacReader.ClusterRoleBindings().
-		List(ctx, metav1.ListOptions{}) //nolint:exhaustruct // K8s API struct
+		List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to fetch cluster role bindings: %w", err)
 	}
@@ -185,7 +183,7 @@ func (a *Analyzer) fetchFromCluster(ctx context.Context) ([]runtime.Object, []ru
 	}
 
 	// Fetch Roles
-	roleList, err := a.rbacReader.Roles("").List(ctx, metav1.ListOptions{}) //nolint:exhaustruct // K8s API struct
+	roleList, err := a.rbacReader.Roles("").List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to fetch roles: %w", err)
 	}
@@ -195,7 +193,7 @@ func (a *Analyzer) fetchFromCluster(ctx context.Context) ([]runtime.Object, []ru
 
 	// Fetch ClusterRoles
 	clusterRoleList, err := a.rbacReader.ClusterRoles().
-		List(ctx, metav1.ListOptions{}) //nolint:exhaustruct // K8s API struct
+		List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to fetch cluster roles: %w", err)
 	}
@@ -260,7 +258,6 @@ func (a *Analyzer) analyzeRoleBinding(
 	if !exists {
 		// Role not found, create a placeholder
 		for _, subject := range binding.Subjects {
-			//nolint:exhaustruct // RiskLevel is calculated after all permissions are collected
 			result = append(result, &SubjectPermissions{
 				Subject: subject,
 				Permissions: []PermissionGrant{
@@ -274,6 +271,7 @@ func (a *Analyzer) analyzeRoleBinding(
 						BindingKind: "RoleBinding",
 					},
 				},
+				RiskLevel: RiskLevelLow, // Default to low risk for missing roles
 			})
 		}
 		return result
@@ -292,7 +290,6 @@ func (a *Analyzer) analyzeRoleBinding(
 
 	// Create permissions for each subject
 	for _, subject := range binding.Subjects {
-		//nolint:exhaustruct // RiskLevel is calculated after all permissions are collected
 		result = append(result, &SubjectPermissions{
 			Subject: subject,
 			Permissions: []PermissionGrant{
@@ -306,6 +303,7 @@ func (a *Analyzer) analyzeRoleBinding(
 					BindingKind: "RoleBinding",
 				},
 			},
+			RiskLevel: RiskLevelLow, // Will be calculated later in consolidatePermissions
 		})
 	}
 
@@ -325,20 +323,20 @@ func (a *Analyzer) analyzeClusterRoleBinding(
 	if !exists {
 		// Role not found, create a placeholder
 		for _, subject := range binding.Subjects {
-			//nolint:exhaustruct // RiskLevel is calculated after all permissions are collected
 			result = append(result, &SubjectPermissions{
 				Subject: subject,
 				Permissions: []PermissionGrant{
-					//nolint:exhaustruct // Namespace is empty for cluster-wide permissions
 					{
 						RoleName:    binding.RoleRef.Name,
 						RoleKind:    binding.RoleRef.Kind,
+						Namespace:   "", // Cluster-wide binding has no namespace
 						Scope:       "cluster-wide",
 						Rules:       []PolicyRuleAnalysis{},
 						BindingName: binding.Name,
 						BindingKind: "ClusterRoleBinding",
 					},
 				},
+				RiskLevel: RiskLevelLow, // Default to low risk for missing roles
 			})
 		}
 		return result
@@ -353,20 +351,20 @@ func (a *Analyzer) analyzeClusterRoleBinding(
 
 	// Create permissions for each subject
 	for _, subject := range binding.Subjects {
-		//nolint:exhaustruct // RiskLevel is calculated after all permissions are collected
 		result = append(result, &SubjectPermissions{
 			Subject: subject,
 			Permissions: []PermissionGrant{
-				//nolint:exhaustruct // Namespace is empty for cluster-wide permissions
 				{
 					RoleName:    binding.RoleRef.Name,
 					RoleKind:    binding.RoleRef.Kind,
+					Namespace:   "", // Cluster-wide binding has no namespace
 					Scope:       "cluster-wide",
 					Rules:       analyzedRules,
 					BindingName: binding.Name,
 					BindingKind: "ClusterRoleBinding",
 				},
 			},
+			RiskLevel: RiskLevelLow, // Will be calculated later in consolidatePermissions
 		})
 	}
 
@@ -378,13 +376,15 @@ func (a *Analyzer) analyzeRules(rules []rbacv1.PolicyRule) []PolicyRuleAnalysis 
 	var result []PolicyRuleAnalysis
 
 	for _, rule := range rules {
-		//nolint:exhaustruct // HumanReadable, SecurityImpact, and VerbExplanations are populated below
 		analysis := PolicyRuleAnalysis{
-			APIGroups:       rule.APIGroups,
-			Resources:       rule.Resources,
-			Verbs:           rule.Verbs,
-			ResourceNames:   rule.ResourceNames,
-			NonResourceURLs: rule.NonResourceURLs,
+			APIGroups:        rule.APIGroups,
+			Resources:        rule.Resources,
+			Verbs:            rule.Verbs,
+			ResourceNames:    rule.ResourceNames,
+			NonResourceURLs:  rule.NonResourceURLs,
+			HumanReadable:    "",                                                                  // Will be set below
+			SecurityImpact:   SecurityImpact{Level: RiskLevelLow, Description: "", Concerns: nil}, // Will be set below
+			VerbExplanations: nil,                                                                 // Will be set below
 		}
 
 		// Generate human-readable explanation
@@ -758,4 +758,36 @@ func (a *Analyzer) formatAPIGroups(apiGroups []string) string {
 		}
 	}
 	return fmt.Sprintf("in API groups: %s", strings.Join(cleanGroups, ", "))
+}
+
+// FilterBySubject returns only the permissions for subjects matching the given name.
+// If subjectName is empty, it returns an empty slice.
+func FilterBySubject(permissions []SubjectPermissions, subjectName string) []SubjectPermissions {
+	if subjectName == "" {
+		return []SubjectPermissions{}
+	}
+
+	var filtered []SubjectPermissions
+	for _, perm := range permissions {
+		if perm.Subject.Name == subjectName {
+			filtered = append(filtered, perm)
+		}
+	}
+	return filtered
+}
+
+// FilterByRiskLevel returns only the permissions matching the given risk level.
+// If permissions slice is nil or empty, it returns an empty slice.
+func FilterByRiskLevel(permissions []SubjectPermissions, riskLevel RiskLevel) []SubjectPermissions {
+	if len(permissions) == 0 {
+		return []SubjectPermissions{}
+	}
+
+	var filtered []SubjectPermissions
+	for _, perm := range permissions {
+		if perm.RiskLevel == riskLevel {
+			filtered = append(filtered, perm)
+		}
+	}
+	return filtered
 }

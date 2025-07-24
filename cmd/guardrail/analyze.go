@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -74,7 +75,7 @@ func init() {
 // runAnalyze executes the RBAC analysis command, processing input from a file, directory, or live Kubernetes cluster, and outputs permission analysis results in the specified format.
 // It validates input options, initializes the analyzer, performs permission analysis, applies subject and risk level filters, and outputs results as JSON or human-readable text.
 // Returns an error if input validation, parsing, analysis, or output fails.
-func runAnalyze(_ *cobra.Command, _ []string) error {
+func runAnalyze(cmd *cobra.Command, _ []string) error {
 	fileArg := viper.GetString("analyze.file")
 	directoryArg := viper.GetString("analyze.directory")
 	clusterArg := viper.GetBool("analyze.cluster")
@@ -136,11 +137,16 @@ func runAnalyze(_ *cobra.Command, _ []string) error {
 	permissions = filterPermissions(permissions, subjectArg, riskLevelArg)
 
 	// Output results
+	var writer io.Writer = os.Stdout
+	if cmd != nil {
+		writer = cmd.OutOrStdout()
+	}
+
 	switch outputFormat {
 	case "json":
-		return outputJSON(permissions)
+		return outputJSON(permissions, writer)
 	default:
-		return outputHumanReadable(permissions, showRolesArg)
+		return outputHumanReadable(permissions, showRolesArg, writer)
 	}
 }
 
@@ -242,8 +248,8 @@ func filterPermissions(
 
 // outputJSON writes the analyzed subject permissions and a summary to stdout in indented JSON format.
 // Returns an error if encoding or writing fails.
-func outputJSON(permissions []analyzer.SubjectPermissions) error {
-	encoder := json.NewEncoder(os.Stdout)
+func outputJSON(permissions []analyzer.SubjectPermissions, w io.Writer) error {
+	encoder := json.NewEncoder(w)
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(map[string]any{
 		"subjects": permissions,
@@ -254,32 +260,32 @@ func outputJSON(permissions []analyzer.SubjectPermissions) error {
 // outputHumanReadable prints a human-readable summary and detailed analysis of RBAC permissions for each subject, including risk distribution and optional rule details.
 // Returns an error only if output fails.
 //
-//nolint:forbidigo // CLI output needs fmt.Print
-func outputHumanReadable(permissions []analyzer.SubjectPermissions, showRoles bool) error {
+
+func outputHumanReadable(permissions []analyzer.SubjectPermissions, showRoles bool, w io.Writer) error {
 	if len(permissions) == 0 {
-		fmt.Println("No RBAC permissions found matching the criteria.")
+		fmt.Fprintln(w, "No RBAC permissions found matching the criteria.")
 		return nil
 	}
 
 	// Print summary
 	summary := getSummary(permissions)
-	fmt.Printf("📊 RBAC Analysis Summary\n")
-	fmt.Printf("========================\n")
-	fmt.Printf("Total Subjects: %d\n", summary.TotalSubjects)
-	fmt.Printf("Risk Distribution:\n")
-	fmt.Printf("  🔴 Critical: %d\n", summary.CriticalRisk)
-	fmt.Printf("  🟠 High: %d\n", summary.HighRisk)
-	fmt.Printf("  🟡 Medium: %d\n", summary.MediumRisk)
-	fmt.Printf("  🟢 Low: %d\n", summary.LowRisk)
-	fmt.Printf("\n")
+	fmt.Fprintf(w, "📊 RBAC Analysis Summary\n")
+	fmt.Fprintf(w, "========================\n")
+	fmt.Fprintf(w, "Total Subjects: %d\n", summary.TotalSubjects)
+	fmt.Fprintf(w, "Risk Distribution:\n")
+	fmt.Fprintf(w, "  🔴 Critical: %d\n", summary.CriticalRisk)
+	fmt.Fprintf(w, "  🟠 High: %d\n", summary.HighRisk)
+	fmt.Fprintf(w, "  🟡 Medium: %d\n", summary.MediumRisk)
+	fmt.Fprintf(w, "  🟢 Low: %d\n", summary.LowRisk)
+	fmt.Fprintf(w, "\n")
 
 	// Print detailed analysis for each subject
 	for i, subjectPerm := range permissions {
 		if i > 0 {
-			fmt.Printf("\n%s\n\n", strings.Repeat("─", outputSeparatorLength))
+			fmt.Fprintf(w, "\n%s\n\n", strings.Repeat("─", outputSeparatorLength))
 		}
 
-		printSubjectAnalysis(subjectPerm, showRoles)
+		printSubjectAnalysis(subjectPerm, showRoles, w)
 	}
 
 	return nil
@@ -289,62 +295,62 @@ func outputHumanReadable(permissions []analyzer.SubjectPermissions, showRoles bo
 // It prints the subject's kind, name, namespace, risk level, and a breakdown of each permission with associated roles and bindings.
 // If showRoles is true, detailed permission rules are printed; otherwise, a summary is shown.
 //
-//nolint:forbidigo // CLI output needs fmt.Print
-func printSubjectAnalysis(subjectPerm analyzer.SubjectPermissions, showRoles bool) {
+
+func printSubjectAnalysis(subjectPerm analyzer.SubjectPermissions, showRoles bool, w io.Writer) {
 	// Print subject header
 	riskIcon := getRiskIcon(subjectPerm.RiskLevel)
-	fmt.Printf("%s %s: %s\n", riskIcon, subjectPerm.Subject.Kind, subjectPerm.Subject.Name)
+	fmt.Fprintf(w, "%s %s: %s\n", riskIcon, subjectPerm.Subject.Kind, subjectPerm.Subject.Name)
 
 	if subjectPerm.Subject.Namespace != "" {
-		fmt.Printf("   Namespace: %s\n", subjectPerm.Subject.Namespace)
+		fmt.Fprintf(w, "   Namespace: %s\n", subjectPerm.Subject.Namespace)
 	}
-	fmt.Printf("   Risk Level: %s\n", strings.ToUpper(string(subjectPerm.RiskLevel)))
-	fmt.Printf("   Total Permissions: %d\n\n", len(subjectPerm.Permissions))
+	fmt.Fprintf(w, "   Risk Level: %s\n", strings.ToUpper(string(subjectPerm.RiskLevel)))
+	fmt.Fprintf(w, "   Total Permissions: %d\n\n", len(subjectPerm.Permissions))
 
 	// Print permissions
 	for _, perm := range subjectPerm.Permissions {
-		fmt.Printf("  📋 %s/%s", perm.RoleKind, perm.RoleName)
+		fmt.Fprintf(w, "  📋 %s/%s", perm.RoleKind, perm.RoleName)
 		if perm.Namespace != "" {
-			fmt.Printf(" (namespace: %s)", perm.Namespace)
+			fmt.Fprintf(w, " (namespace: %s)", perm.Namespace)
 		}
-		fmt.Printf("\n")
-		fmt.Printf("     Scope: %s\n", perm.Scope)
-		fmt.Printf("     Bound via: %s/%s\n", perm.BindingKind, perm.BindingName)
+		fmt.Fprintf(w, "\n")
+		fmt.Fprintf(w, "     Scope: %s\n", perm.Scope)
+		fmt.Fprintf(w, "     Bound via: %s/%s\n", perm.BindingKind, perm.BindingName)
 
 		if showRoles && len(perm.Rules) > 0 {
-			fmt.Printf("\n     🔍 Detailed Permissions:\n")
+			fmt.Fprintf(w, "\n     🔍 Detailed Permissions:\n")
 			for _, rule := range perm.Rules {
-				printRuleAnalysis(rule, "       ")
+				printRuleAnalysis(rule, "       ", w)
 			}
 		} else if len(perm.Rules) > 0 {
-			fmt.Printf("     📝 Summary: %s\n", generatePermissionSummary(perm.Rules))
+			fmt.Fprintf(w, "     📝 Summary: %s\n", generatePermissionSummary(perm.Rules))
 		}
-		fmt.Printf("\n")
+		fmt.Fprintf(w, "\n")
 	}
 }
 
 // printRuleAnalysis displays a detailed, human-readable analysis of a policy rule, including its description, risk level, concerns, and allowed actions with explanations and examples, using indentation and optional color coding for clarity.
 //
-//nolint:forbidigo // CLI output needs fmt.Print
-func printRuleAnalysis(rule analyzer.PolicyRuleAnalysis, indent string) {
-	fmt.Printf("%s• %s\n", indent, rule.HumanReadable)
-	fmt.Printf("%s  Risk: %s\n", indent, strings.ToUpper(string(rule.SecurityImpact.Level)))
+
+func printRuleAnalysis(rule analyzer.PolicyRuleAnalysis, indent string, w io.Writer) {
+	fmt.Fprintf(w, "%s• %s\n", indent, rule.HumanReadable)
+	fmt.Fprintf(w, "%s  Risk: %s\n", indent, strings.ToUpper(string(rule.SecurityImpact.Level)))
 
 	if len(rule.SecurityImpact.Concerns) > 0 {
-		fmt.Printf("%s  ⚠️  Concerns: %s\n", indent, strings.Join(rule.SecurityImpact.Concerns, ", "))
+		fmt.Fprintf(w, "%s  ⚠️  Concerns: %s\n", indent, strings.Join(rule.SecurityImpact.Concerns, ", "))
 	}
 
 	if len(rule.VerbExplanations) > 0 {
-		fmt.Printf("%s  🔧 Actions allowed:\n", indent)
+		fmt.Fprintf(w, "%s  🔧 Actions allowed:\n", indent)
 		for _, verb := range rule.VerbExplanations {
 			riskColor := getColorForRisk(verb.RiskLevel)
-			fmt.Printf("%s    - %s%s%s: %s\n", indent, riskColor, verb.Verb, resetColor(), verb.Explanation)
+			fmt.Fprintf(w, "%s    - %s%s%s: %s\n", indent, riskColor, verb.Verb, resetColor(), verb.Explanation)
 			if verb.Examples != "" {
-				fmt.Printf("%s      Example: %s\n", indent, verb.Examples)
+				fmt.Fprintf(w, "%s      Example: %s\n", indent, verb.Examples)
 			}
 		}
 	}
-	fmt.Printf("\n")
+	fmt.Fprintf(w, "\n")
 }
 
 // generatePermissionSummary returns a summary string describing the number of permission rules and how many are classified as high-risk or critical.
@@ -442,9 +448,12 @@ type AnalysisSummary struct {
 // getSummary aggregates the total number of subjects and counts of each risk level from the provided permissions.
 // It returns an AnalysisSummary with these aggregated values.
 func getSummary(permissions []analyzer.SubjectPermissions) AnalysisSummary {
-	//nolint:exhaustruct // Risk counts are calculated in the loop below
 	summary := AnalysisSummary{
 		TotalSubjects: len(permissions),
+		CriticalRisk:  0,
+		HighRisk:      0,
+		MediumRisk:    0,
+		LowRisk:       0,
 	}
 
 	for _, perm := range permissions {

@@ -112,6 +112,6 @@ func GetObjectGVK(obj runtime.Object) schema.GroupVersionKind {
 	case *rbacv1.ClusterRoleBinding:
 		return rbacv1.SchemeGroupVersion.WithKind("ClusterRoleBinding")
 	default:
-		return schema.GroupVersionKind{} //nolint:exhaustruct // Empty GVK for non-RBAC objects
+		return schema.GroupVersionKind{}
 	}
 }
