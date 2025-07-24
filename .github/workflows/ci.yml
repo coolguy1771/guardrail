@@ -113,14 +113,8 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: guardrail-linux-amd64
-          path: ./
-
-      - name: Make binary executable
-        run: chmod +x guardrail-linux-amd64
+      - name: Get dependencies
+        run: go mod download
 
       - name: Create kind cluster
         uses: helm/kind-action@v1.12.0
@@ -135,27 +129,22 @@ jobs:
           kubectl get nodes
           kubectl config current-context
 
-      - name: Make integration test script executable
-        run: chmod +x scripts/integration-test.sh
+      - name: Run integration tests (non-cluster)
+        run: go test -v -tags=integration -timeout=10m ./cmd/guardrail -run TestIntegrationCommands
 
-      - name: Run integration tests (without cluster)
-        run: |
-          # Copy downloaded binary to expected location
-          mkdir -p build
-          cp guardrail-linux-amd64 build/guardrail
-          chmod +x build/guardrail
-          # Run integration test script without cluster tests
-          ENABLE_CLUSTER_TESTS=false bash scripts/integration-test.sh
+      - name: Run JSON validation tests
+        run: go test -v -tags=integration -timeout=5m ./cmd/guardrail -run TestIntegrationValidateJSON
+
+      - name: Run performance tests
+        run: go test -v -tags=integration -timeout=5m ./cmd/guardrail -run TestIntegrationPerformance
 
       - name: Apply test RBAC to cluster
         run: kubectl apply -f testdata/
 
-      - name: Run cluster-specific tests
-        run: |
-          # Run direct cluster tests after cluster is set up
-          ./guardrail-linux-amd64 analyze --cluster
-          ./guardrail-linux-amd64 analyze --cluster --subject system:masters
-          ./guardrail-linux-amd64 analyze --cluster --risk-level high -o json | jq .
+      - name: Run cluster integration tests
+        env:
+          ENABLE_CLUSTER_TESTS: "true"
+        run: go test -v -tags=integration -timeout=10m ./cmd/guardrail -run TestIntegrationCluster
 
   benchmark:
     name: Benchmark

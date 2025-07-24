@@ -35,7 +35,12 @@ test-coverage:
 # Check coverage with cov
 cov:
 	@echo "Checking coverage with cov..."
-	@go test -coverprofile=coverage.out ./... > /dev/null 2>&1
+	@go test -covermode=atomic -coverprofile=coverage.out ./... > /dev/null 2>&1; \
+	EXIT_CODE=$$?; \
+	if [ $$EXIT_CODE -ne 0 ]; then \
+		echo "Tests failed with exit code $$EXIT_CODE"; \
+		exit $$EXIT_CODE; \
+	fi
 	@if command -v cov &> /dev/null; then \
 		cov --threshold 70 coverage.out; \
 	else \
@@ -46,7 +51,12 @@ cov:
 # Check coverage for PR changes
 cov-pr:
 	@echo "Checking PR coverage..."
-	@go test -coverprofile=coverage.out ./... > /dev/null 2>&1
+	@go test -covermode=atomic -coverprofile=coverage.out ./... > /dev/null 2>&1; \
+	EXIT_CODE=$$?; \
+	if [ $$EXIT_CODE -ne 0 ]; then \
+		echo "Tests failed with exit code $$EXIT_CODE"; \
+		exit $$EXIT_CODE; \
+	fi
 	@if command -v cov &> /dev/null; then \
 		cov --branch main --threshold 80 coverage.out; \
 	else \
@@ -55,9 +65,14 @@ cov-pr:
 	fi
 
 # Run integration tests
-test-integration: build
+test-integration:
 	@echo "Running integration tests..."
-	@bash ./scripts/integration-test.sh
+	@go test -v -tags=integration -timeout=10m ./cmd/guardrail -run TestIntegration
+
+# Run integration tests with cluster
+test-integration-cluster:
+	@echo "Running cluster integration tests..."
+	@ENABLE_CLUSTER_TESTS=true go test -v -tags=integration -timeout=10m ./cmd/guardrail -run TestIntegrationCluster
 
 # Run benchmarks
 test-bench:
@@ -124,6 +139,7 @@ help:
 	@echo "  test               - Run tests with race detection"
 	@echo "  test-coverage      - Run tests with coverage report"
 	@echo "  test-integration   - Run integration tests"
+	@echo "  test-integration-cluster - Run cluster integration tests"
 	@echo "  test-all           - Run all tests (unit + integration)"
 	@echo "  test-quick         - Run quick smoke tests"
 	@echo "  test-bench         - Run benchmarks"
