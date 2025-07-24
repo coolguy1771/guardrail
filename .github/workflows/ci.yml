@@ -139,7 +139,7 @@ jobs:
         run: go test -v -tags=integration -timeout=5m ./cmd/guardrail -run TestIntegrationPerformance
 
       - name: Apply test RBAC to cluster
-        run: kubectl apply -f testdata/
+        run: kubectl apply -k testdata/
 
       - name: Run cluster integration tests
         env:

@@ -88,8 +88,8 @@ func TestIntegrationCommands(t *testing.T) {
 		{
 			name:     "validate multiple files",
 			args:     []string{"validate", "-f", filepath.Join(projectRoot, "testdata", "role-with-wildcard.yaml"), "-f", filepath.Join(projectRoot, "testdata", "role-secrets-access.yaml")},
-			wantErr:  false, // TODO: Multiple -f flags might not be supported correctly
-			contains: []string{"RBAC003"},
+			wantErr:  true, // validation exits with error when HIGH severity issues found
+			contains: []string{"RBAC001", "RBAC003"}, // Should find issues from both files
 		},
 		
 		// Output formats
@@ -261,9 +261,9 @@ func TestIntegrationCluster(t *testing.T) {
 	
 	binary := buildBinary(t)
 	
-	// Apply test RBAC resources to cluster
-	t.Log("Applying test RBAC resources to cluster...")
-	applyCmd := exec.Command("kubectl", "apply", "-f", filepath.Join(projectRoot, "testdata"))
+	// Apply test resources using Kustomize
+	t.Log("Applying test resources using Kustomize...")
+	applyCmd := exec.Command("kubectl", "apply", "-k", filepath.Join(projectRoot, "testdata"))
 	applyCmd.Dir = projectRoot
 	if output, err := applyCmd.CombinedOutput(); err != nil {
 		t.Logf("Warning: Failed to apply test resources: %v\nOutput: %s", err, output)
@@ -272,7 +272,9 @@ func TestIntegrationCluster(t *testing.T) {
 	// Clean up resources after tests
 	t.Cleanup(func() {
 		t.Log("Cleaning up test RBAC resources...")
-		deleteCmd := exec.Command("kubectl", "delete", "-f", filepath.Join(projectRoot, "testdata"), "--ignore-not-found=true")
+		// Use label selector to delete all test resources
+		deleteCmd := exec.Command("kubectl", "delete", "all,namespaces,clusterroles,clusterrolebindings,roles,rolebindings", 
+			"-l", "test-suite=guardrail-integration", "--ignore-not-found=true")
 		deleteCmd.Dir = projectRoot
 		if output, err := deleteCmd.CombinedOutput(); err != nil {
 			t.Logf("Warning: Failed to clean up test resources: %v\nOutput: %s", err, output)
@@ -463,8 +465,12 @@ func buildBinary(t *testing.T) string {
 	}
 	
 	t.Logf("Building binary to %s", binaryPath)
+	
+	// Find the repository root dynamically
+	repoRoot := findRepositoryRoot(t)
+	
 	cmd := exec.Command("go", "build", "-o", binaryPath, "./cmd/guardrail")
-	cmd.Dir = filepath.Join("..", "..")
+	cmd.Dir = repoRoot
 	
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("Failed to build binary: %v\nOutput: %s", err, output)
@@ -503,15 +509,30 @@ func getCurrentContext(t *testing.T) string {
 // getProjectRoot returns the absolute path to the project root directory
 func getProjectRoot(t *testing.T) string {
 	t.Helper()
-	// Since we're in cmd/guardrail, go up two directories to get to project root
-	wd, err := os.Getwd()
+	return findRepositoryRoot(t)
+}
+
+// findRepositoryRoot walks up the directory tree looking for go.mod file
+func findRepositoryRoot(t *testing.T) string {
+	t.Helper()
+	
+	dir, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("Failed to get working directory: %v", err)
 	}
-	// If we're running from project root (as in CI), just return current directory
-	if _, err := os.Stat("testdata"); err == nil {
-		return wd
+	
+	// Walk up the directory tree until we find go.mod
+	for {
+		goModPath := filepath.Join(dir, "go.mod")
+		if _, err := os.Stat(goModPath); err == nil {
+			return dir
+		}
+		
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			// Reached root of filesystem without finding go.mod
+			t.Fatalf("Could not find go.mod in any parent directory")
+		}
+		dir = parent
 	}
-	// Otherwise, we're in cmd/guardrail, so go up two directories
-	return filepath.Join(wd, "..", "..")
 }

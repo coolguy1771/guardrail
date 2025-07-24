@@ -18,7 +18,7 @@ import (
 
 //nolint:gochecknoglobals // CLI flags need to be global for Cobra
 var (
-	file      string
+	files     []string
 	directory string
 )
 
@@ -34,38 +34,39 @@ var validateCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(validateCmd)
 
-	validateCmd.Flags().StringVarP(&file, "file", "f", "", "Path to a single RBAC manifest file")
+	validateCmd.Flags().
+		StringSliceVarP(&files, "file", "f", []string{}, "Path to RBAC manifest file(s) (can be specified multiple times)")
 	validateCmd.Flags().StringVarP(&directory, "dir", "d", "", "Path to a directory containing RBAC manifests")
 
-	_ = viper.BindPFlag("file", validateCmd.Flags().Lookup("file"))
+	_ = viper.BindPFlag("files", validateCmd.Flags().Lookup("file"))
 	_ = viper.BindPFlag("directory", validateCmd.Flags().Lookup("dir"))
 }
 
 //nolint:gocognit // Validation logic requires handling multiple cases
 func runValidate(cmd *cobra.Command, _ []string) error {
-	fileArg := viper.GetString("file")
+	filesArg := viper.GetStringSlice("files")
 	directoryArg := viper.GetString("directory")
 	outputFormat := viper.GetString("output")
 
-	if fileArg == "" && directoryArg == "" {
+	if len(filesArg) == 0 && directoryArg == "" {
 		return errors.New("either --file or --dir must be specified")
 	}
 
-	if fileArg != "" && directoryArg != "" {
+	if len(filesArg) > 0 && directoryArg != "" {
 		return errors.New("cannot specify both --file and --dir")
 	}
 
-	var files []string
+	var filesToProcess []string
 
-	if fileArg != "" {
-		files = append(files, fileArg)
+	if len(filesArg) > 0 {
+		filesToProcess = filesArg
 	} else {
 		err := filepath.Walk(directoryArg, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				return err
 			}
 			if !info.IsDir() && (filepath.Ext(path) == ".yaml" || filepath.Ext(path) == ".yml") {
-				files = append(files, path)
+				filesToProcess = append(filesToProcess, path)
 			}
 			return nil
 		})
@@ -74,7 +75,7 @@ func runValidate(cmd *cobra.Command, _ []string) error {
 		}
 	}
 
-	if len(files) == 0 {
+	if len(filesToProcess) == 0 {
 		return errors.New("no YAML files found")
 	}
 
@@ -83,7 +84,7 @@ func runValidate(cmd *cobra.Command, _ []string) error {
 
 	// Parse all files
 	var allObjects []runtime.Object
-	for _, f := range files {
+	for _, f := range filesToProcess {
 		objects, err := p.ParseFile(f)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: Failed to parse %s: %v\n", f, err)

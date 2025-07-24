@@ -215,7 +215,7 @@ func TestValidateCommand(t *testing.T) {
 
 // resetValidateFlags resets validate command flags.
 func resetValidateFlags() {
-	file = ""
+	files = []string{}
 	directory = ""
 }
 
@@ -235,14 +235,15 @@ func setupValidateCommand(buf *bytes.Buffer) {
 	}
 
 	// Register all flags for validate command
-	validateCmd.Flags().StringVarP(&file, "file", "f", "", "Path to a single RBAC manifest file")
+	validateCmd.Flags().
+		StringSliceVarP(&files, "file", "f", []string{}, "Path to RBAC manifest file(s) (can be specified multiple times)")
 	validateCmd.Flags().StringVarP(&directory, "dir", "d", "", "Path to a directory containing RBAC manifests")
 
 	// Add output flag to root command
 	rootCmd.PersistentFlags().StringP("output", "o", "text", "Output format (text, json, sarif)")
 
 	// Bind flags to viper
-	_ = viper.BindPFlag("file", validateCmd.Flags().Lookup("file"))
+	_ = viper.BindPFlag("files", validateCmd.Flags().Lookup("file"))
 	_ = viper.BindPFlag("directory", validateCmd.Flags().Lookup("dir"))
 	_ = viper.BindPFlag("output", rootCmd.PersistentFlags().Lookup("output"))
 
