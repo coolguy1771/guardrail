@@ -9,7 +9,8 @@ on:
     - cron: '0 0 * * 1'  # Weekly on Monday
 
 permissions:
-  contents: write
+  actions: read
+  contents: read
   security-events: write
 
 jobs:
