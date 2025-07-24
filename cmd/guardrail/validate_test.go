@@ -401,7 +401,7 @@ func TestRunValidate_OutputFormats(t *testing.T) {
 		t.Run(format+" format", func(t *testing.T) {
 			// Reset viper
 			viper.Reset()
-			viper.Set("file", roleFile)
+			viper.Set("files", []string{roleFile})
 			viper.Set("output", format)
 
 			// Capture output
