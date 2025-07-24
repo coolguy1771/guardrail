@@ -44,6 +44,18 @@ run_test() {
         echo "Expected pattern: $expected_pattern"
         echo "Got first 500 chars of output: ${output:0:500}"
         TESTS_FAILED=$((TESTS_FAILED + 1))
+        
+        # Additional debugging for cluster tests
+        if [[ "$test_name" == *"cluster"* ]]; then
+            echo "Debugging cluster test failure:"
+            echo "Exit code: $?"
+            echo "Full output (first 1000 chars):"
+            echo "${output:0:1000}"
+            if command -v kubectl &> /dev/null; then
+                echo "Kubectl context: $(kubectl config current-context 2>&1 || echo 'No context')"
+                echo "Kubectl cluster-info: $(kubectl cluster-info 2>&1 | head -3 || echo 'Failed to get cluster info')"
+            fi
+        fi
     fi
 }
 
@@ -128,11 +140,11 @@ run_test_expect_failure "No input specified" "$BINARY validate" "either --file o
 if [ "${ENABLE_CLUSTER_TESTS:-false}" = "true" ]; then
     info "Cluster tests explicitly enabled via ENABLE_CLUSTER_TESTS=true"
     info "Testing cluster integration..."
-    run_test "Analyze cluster" "$BINARY analyze --cluster" "RBAC Analysis Summary"
+    run_test "Analyze cluster" "$BINARY analyze --cluster" "📊 RBAC Analysis Summary"
     run_test "Analyze cluster with filter" "$BINARY analyze --cluster --risk-level high" "Risk Level"
 elif command -v kubectl &> /dev/null && kubectl get nodes &> /dev/null 2>&1; then
     info "Cluster detected, running cluster integration tests..."
-    run_test "Analyze cluster" "$BINARY analyze --cluster" "RBAC Analysis Summary"
+    run_test "Analyze cluster" "$BINARY analyze --cluster" "📊 RBAC Analysis Summary"
     run_test "Analyze cluster with filter" "$BINARY analyze --cluster --risk-level high" "Risk Level"
 else
     info "Skipping cluster integration tests (no cluster access detected)"
