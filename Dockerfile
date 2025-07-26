@@ -28,7 +28,7 @@ WORKDIR /root/
 
 # Create non-root user
 RUN addgroup -g 1001 guardrail && \
-    adduser -D -u 1001 -G guardrail guardrail
+  adduser -D -u 1001 -G guardrail guardrail
 
 # Copy the binary from builder stage
 COPY --from=builder /app/guardrail .
@@ -38,7 +38,7 @@ COPY --from=builder /app/configs /etc/guardrail/
 
 # Create necessary directories
 RUN mkdir -p /app/data && \
-    chown -R guardrail:guardrail /app
+  chown -R guardrail:guardrail /app
 
 # Switch to non-root user
 USER guardrail

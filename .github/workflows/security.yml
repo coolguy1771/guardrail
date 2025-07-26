@@ -1,95 +1,184 @@
 name: Security
-
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main ]
+    branches: [main]
   schedule:
-    - cron: '0 0 * * 1'  # Weekly on Monday
+    - cron: "0 0 * * 1" # Weekly on Monday
 
 permissions:
-  actions: read
   contents: read
   security-events: write
+  actions: read
 
 jobs:
+  # Go Security Scanning with Gosec
   gosec:
-    name: Go Security Checker
+    name: Gosec Security Scan
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4.2.2
 
       - name: Run Gosec Security Scanner
-        uses: securego/gosec@v2.22.7
+        uses: securego/gosec@v2.21.4
         with:
-          args: '-no-fail -fmt sarif -out results.sarif ./...'
+          args: "-fmt sarif -out gosec-results.sarif -stdout -verbose=text -severity medium ./..."
 
-      - name: Upload Gosec SARIF results
-        uses: github/codeql-action/upload-sarif@v3
+      - name: Upload SARIF file
+        uses: github/codeql-action/upload-sarif@v3.27.10
         with:
-          sarif_file: results.sarif
+          sarif_file: gosec-results.sarif
+          category: gosec
 
-  trivy:
-    name: Trivy Security Scan
+  # Filesystem vulnerability scanning
+  trivy-fs:
+    name: Trivy Filesystem Scan
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4.2.2
 
-      - name: Run Trivy vulnerability scanner
+      - name: Run Trivy vulnerability scanner in fs mode
         uses: aquasecurity/trivy-action@0.32.0
         with:
-          scan-type: 'fs'
-          scan-ref: '.'
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-          severity: 'CRITICAL,HIGH,MEDIUM'
+          scan-type: "fs"
+          scan-ref: "."
+          format: "sarif"
+          output: "trivy-fs-results.sarif"
+          severity: "CRITICAL,HIGH,MEDIUM"
+          exit-code: "0"
 
-      - name: Upload Trivy SARIF results
-        uses: github/codeql-action/upload-sarif@v3
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3.27.10
         with:
-          sarif_file: trivy-results.sarif
+          sarif_file: "trivy-fs-results.sarif"
+          category: trivy-filesystem
 
+  # Container image scanning (if images exist)
+  trivy-image:
+    name: Trivy Container Scan
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4.2.2
+
+      - name: Build test image
+        run: |
+          if [ -f Dockerfile ]; then
+            docker build -t ${{ github.repository }}:${{ github.sha }} .
+          else
+            echo "No Dockerfile found, skipping image scan"
+            exit 0
+          fi
+
+      - name: Run Trivy vulnerability scanner on image
+        if: success()
+        uses: aquasecurity/trivy-action@0.32.0
+        with:
+          scan-type: "image"
+          image-ref: "${{ github.repository }}:${{ github.sha }}"
+          format: "sarif"
+          output: "trivy-image-results.sarif"
+          severity: "CRITICAL,HIGH"
+          exit-code: "0"
+
+      - name: Upload Trivy scan results
+        if: success()
+        uses: github/codeql-action/upload-sarif@v3.27.10
+        with:
+          sarif_file: "trivy-image-results.sarif"
+          category: trivy-image
+
+  # CodeQL Analysis
   codeql:
     name: CodeQL Analysis
     runs-on: ubuntu-latest
-    permissions:
-      actions: read
-      contents: read
-      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ["go"]
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4.2.2
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@v3.27.10
         with:
-          languages: go
+          languages: ${{ matrix.language }}
+          queries: security-and-quality
 
       - name: Autobuild
-        uses: github/codeql-action/autobuild@v3
+        uses: github/codeql-action/autobuild@v3.27.10
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@v3.27.10
+        with:
+          category: "/language:${{ matrix.language }}"
 
+  # Dependency vulnerability check
   dependency-check:
-    name: OWASP Dependency Check
+    name: Dependency Security Check
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4.2.2
 
-      - name: Run OWASP Dependency Check
-        uses: dependency-check/Dependency-Check_Action@1.1.0
+      - name: Run dependency review
+        if: github.event_name == 'pull_request'
+        uses: actions/dependency-review-action@v4.5.0
         with:
-          project: 'guardrail'
-          path: '.'
-          format: 'SARIF'
-          args: '--enableRetired'
+          vulnerability-check: true
+          license-check: true
+          deny-licenses: GPL-3.0, AGPL-3.0
 
-      - name: Upload Dependency-Check SARIF results
-        uses: github/codeql-action/upload-sarif@v3
+      - name: Run Nancy vulnerability scanner
+        uses: sonatype-nexus-community/nancy-github-action@v1.1.0
         with:
-          sarif_file: reports/dependency-check-report.sarif
+          nancyVersion: "v1.0.42"
+
+  # SBOM Generation
+  sbom:
+    name: Generate SBOM
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+
+      - name: Generate SBOM with Trivy
+        uses: aquasecurity/trivy-action@0.32.0
+        with:
+          scan-type: "fs"
+          scan-ref: "."
+          format: "cyclonedx"
+          output: "sbom.json"
+          exit-code: "0"
+
+      - name: Upload SBOM as artifact
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: sbom-cyclonedx
+          path: sbom.json
+          retention-days: 30
+
+  # License compliance check
+  license-check:
+    name: License Compliance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-go@v5.2.0
+        with:
+          go-version: "1.24"
+          cache: true
+
+      - name: Install go-licenses
+        run: go install github.com/google/go-licenses@latest
+
+      - name: Check licenses
+        run: |
+          go-licenses check ./... --disallowed_types=forbidden,restricted || true
+          go-licenses report ./... > licenses.csv
+
+      - name: Upload license report
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: license-report
+          path: licenses.csv
+          retention-days: 30

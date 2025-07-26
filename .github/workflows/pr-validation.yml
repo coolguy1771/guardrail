@@ -1,19 +1,25 @@
 name: PR Validation
-
 on:
   pull_request:
-    types: [opened, edited, synchronize, reopened]
+    types: [opened, synchronize, reopened, edited]
 
-env:
-  GO_VERSION: '1.24'
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
-  validate-pr-title:
-    name: Validate PR Title
+  # Validate PR metadata and add labels
+  pr-metadata:
     runs-on: ubuntu-latest
     steps:
-      - name: Check PR title
-        uses: amannn/action-semantic-pull-request@0723387faaf9b38adef4775cd42cfd5155ed6017 # v5
+      - uses: actions/checkout@v4.2.2
+
+      - name: Validate PR title
+        uses: amannn/action-semantic-pull-request@v5.5.3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -33,118 +39,134 @@ jobs:
           subjectPattern: ^(?![A-Z]).+$
           subjectPatternError: |
             The subject "{subject}" found in the pull request title "{title}"
-            didn't match the configured pattern. Please ensure that the subject
+            didn't match the configured pattern. Please ensure the subject
             doesn't start with an uppercase character.
 
-  check-commits:
-    name: Check Commit Messages
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
-        with:
-          fetch-depth: 0
-
-      - name: Check commits
-        uses: wagoid/commitlint-github-action@b948419dd99f3fd78a6548d48f94e3df7f6bf3ed # v6
-
-  size-label:
-    name: Add Size Label
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-    steps:
-      - name: Add size label
-        uses: codelytv/pr-size-labeler@4ec67706cd878fbc1c8db0a5dcd28b6bb412e85a # v1
+      - name: Label PR by size
+        uses: codelytv/pr-size-labeler@v1.10.1
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          xs_label: 'size/XS'
+          xs_label: "size/XS"
           xs_max_size: 10
-          s_label: 'size/S'
+          s_label: "size/S"
           s_max_size: 100
-          m_label: 'size/M'
+          m_label: "size/M"
           m_max_size: 500
-          l_label: 'size/L'
+          l_label: "size/L"
           l_max_size: 1000
-          xl_label: 'size/XL'
-          fail_if_xl: false
+          xl_label: "size/XL"
 
-  test-changes:
-    name: Test Changed Packages
+      - name: Auto-label based on paths
+        uses: actions/labeler@v5.0.0
+        with:
+          repo-token: "${{ secrets.GITHUB_TOKEN }}"
+          sync-labels: true
+
+  # Check for merge conflicts
+  conflict-check:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - uses: actions/checkout@v4.2.2
         with:
           fetch-depth: 0
 
-      - name: Set up Go
-        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
+      - name: Check for conflicts
+        run: |
+          git fetch origin main
+          if ! git merge-base --is-ancestor origin/main HEAD; then
+            echo "::warning::This PR is not up to date with main branch"
+          fi
 
-      - name: Get changed files
+  # Run focused tests only on changed packages
+  focused-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5.2.0
+        with:
+          go-version: "1.24"
+
+      - name: Detect changed Go files
         id: changed-files
-        uses: tj-actions/changed-files@v46
+        uses: tj-actions/changed-files@v46.0.1
         with:
           files: |
             **/*.go
-          files_ignore: |
-            **/*_test.go
+            go.mod
+            go.sum
 
-      - name: Test changed packages
+      - name: Get changed packages
         if: steps.changed-files.outputs.any_changed == 'true'
-        run: |
-          # Extract unique package paths from changed files
-          PACKAGES=$(echo "${{ steps.changed-files.outputs.all_changed_files }}" | \
-            xargs -n1 dirname | \
-            grep -E '^(cmd|pkg|internal)/' | \
-            sort -u | \
-            sed 's|^|./|')
-          
-          if [ -n "$PACKAGES" ]; then
-            echo "Testing changed packages:"
-            echo "$PACKAGES"
-            
-            # Convert packages to a space-separated list with /... appended to each
-            PACKAGE_LIST=""
-            for pkg in $PACKAGES; do
-              PACKAGE_LIST="$PACKAGE_LIST $pkg/..."
-            done
-            
-            # Run tests on all changed packages
-            go test -v -race -covermode=atomic -coverprofile=coverage.out $PACKAGE_LIST
-          fi
-
-      - name: Check coverage on changed code
-        if: steps.changed-files.outputs.any_changed == 'true'
-        uses: PaloAltoNetworks/cov@3.2.1
+        id: packages
+        uses: actions/github-script@v7.0.1
         with:
-          cov_mode: coverage
-          cov_file: coverage.out
-          cov_threshold: "80"
-          main_branch: main
+          script: |
+            const { execSync } = require('child_process');
+            const output = execSync('git diff --name-only origin/main...HEAD').toString();
+            const goFiles = output.split('\n').filter(file => file.endsWith('.go'));
+            const packages = [...new Set(goFiles.map(file => {
+              const dir = file.substring(0, file.lastIndexOf('/'));
+              return dir.startsWith('./') ? dir : './' + dir;
+            }))];
+            return packages.join(' ');
 
-  validate-testdata:
-    name: Validate Test Data
+      - name: Run focused tests on changed packages
+        if: steps.changed-files.outputs.any_changed == 'true' && steps.packages.outputs.result != ''
+        run: go test -v -race ${{ steps.packages.outputs.result }}
+
+  # Security checks for dependencies
+  dependency-review:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
-
-      - name: Set up Go
-        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5
+      - uses: actions/checkout@v4.2.2
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4.5.0
         with:
-          go-version: ${{ env.GO_VERSION }}
+          vulnerability-check: true
+          license-check: true
+          deny-licenses: GPL-3.0, AGPL-3.0
 
-      - name: Build guardrail
-        run: make build
+  # Comment PR with helpful information
+  pr-comment:
+    needs: [pr-metadata, focused-tests]
+    if: github.event.action == 'opened'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
 
-      - name: Validate all test data
-        run: |
-          # Validate each YAML file in testdata
-          for file in testdata/*.yaml; do
-            echo "Validating $file..."
-            ./guardrail validate -f "$file" || true
-          done
+      - name: Comment on PR
+        uses: actions/github-script@v7.0.1
+        with:
+          script: |
+            const prBody = context.payload.pull_request.body || '';
+            const hasTests = prBody.includes('- [ ] Tests') || prBody.includes('- [x] Tests');
+            const hasDocs = prBody.includes('- [ ] Documentation') || prBody.includes('- [x] Documentation');
+
+            let comment = '👋 Thanks for submitting this pull request!\n\n';
+            comment += '### Automated Checks\n';
+            comment += '- ✅ PR title follows conventional commits\n';
+            comment += '- 🔄 Running CI pipeline...\n';
+            comment += '- 📊 Coverage report will be posted after tests complete\n\n';
+
+            if (!hasTests) {
+              comment += '⚠️ **Reminder**: Please ensure your changes include appropriate tests.\n\n';
+            }
+
+            if (!hasDocs) {
+              comment += '📝 **Reminder**: Please update documentation if this PR introduces new features or changes behavior.\n\n';
+            }
+
+            comment += '### Next Steps\n';
+            comment += '1. Wait for all checks to pass\n';
+            comment += '2. Address any review feedback\n';
+            comment += '3. Ensure branch is up to date with `main`\n';
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });

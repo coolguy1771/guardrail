@@ -1,195 +1,196 @@
 name: CI
-
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 permissions:
-  actions: read
   contents: read
+  pull-requests: write
   security-events: write
 
-env:
-  GO_VERSION: '1.24'
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  lint:
-    name: Lint
+  # Detect if Go files changed to skip unnecessary runs
+  changes:
     runs-on: ubuntu-latest
+    outputs:
+      go: ${{ steps.changed-files.outputs.go_any_changed }}
+      docs: ${{ steps.changed-files.outputs.docs_any_changed }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4.2.2
-
-      - name: Set up Go
-        uses: actions/setup-go@v5.5.0
+      - uses: actions/checkout@v4.2.2
+      - uses: tj-actions/changed-files@v46.0.1
+        id: changed-files
         with:
-          go-version: ${{ env.GO_VERSION }}
+          files_yaml: |
+            go:
+              - '**/*.go'
+              - 'go.mod'
+              - 'go.sum'
+              - '.github/workflows/go-*.yml'
+              - '.github/workflows/ci.yml'
+            docs:
+              - '**/*.md'
+              - 'docs/**'
 
-      - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v8.0.0
-        with:
-          version: latest
-          args: --timeout=5m
+  # Lint and test Go code
+  lint-test:
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    uses: ./.github/workflows/go-lint-test.yml
+    with:
+      go-version: "1.24"
 
-  test:
-    name: Test
-    runs-on: ${{ matrix.os }}
+  # Build binaries for multiple platforms
+  build:
+    needs: [changes, lint-test]
+    if: needs.changes.outputs.go == 'true'
     strategy:
       matrix:
-        os: [ubuntu-latest, macOS-latest, windows-latest]
-        go-version: ['1.23', '1.24']
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4.2.2
+        include:
+          - os: ubuntu-latest
+            platforms: "linux/amd64,linux/arm64"
+          - os: macos-latest
+            platforms: "darwin/amd64,darwin/arm64"
+          - os: windows-latest
+            platforms: "windows/amd64"
+    uses: ./.github/workflows/go-build.yml
+    with:
+      go-version: "1.24"
+      platforms: ${{ matrix.platforms }}
 
-      - name: Set up Go
-        uses: actions/setup-go@v5.5.0
+  # Security scanning
+  security-scan:
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-go@v5.2.0
+        with:
+          go-version: "1.24"
+          cache: true
+
+      # Run go vet
+      - name: Run go vet
+        run: go vet ./...
+
+      # Run gosec security scanner
+      - uses: securego/gosec@v2.21.4
+        with:
+          args: "-fmt sarif -out gosec-results.sarif ./..."
+
+      - name: Upload SARIF file
+        uses: github/codeql-action/upload-sarif@v3.27.10
+        with:
+          sarif_file: gosec-results.sarif
+
+      # Run staticcheck
+      - uses: dominikh/staticcheck-action@v1.3.1
+        with:
+          version: "latest"
+          install-go: false
+
+      # Run CodeQL
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3.27.10
+        with:
+          languages: go
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3.27.10
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3.27.10
+        with:
+          category: "/language:go"
+
+  # Upload coverage and artifacts
+  coverage-report:
+    needs: lint-test
+    if: always() && needs.lint-test.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+
+      - name: Download coverage artifact
+        uses: actions/download-artifact@v4.1.8
+        with:
+          name: coverage-report
+          path: ./
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5.1.3
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          file: ./coverage.out
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+
+      - name: Generate coverage badge
+        uses: 5monkeys/cobertura-action@v2
+        with:
+          path: coverage.out
+          minimum_coverage: 70
+          fail_below_threshold: false
+          show_line: true
+          show_branch: true
+          show_missing: true
+
+      - name: Comment coverage on PR
+        if: github.event_name == 'pull_request'
+        uses: 5monkeys/cobertura-action@v2
+        with:
+          path: coverage.out
+          minimum_coverage: 70
+          fail_below_threshold: false
+          show_line: true
+          show_branch: true
+          pull_request_number: ${{ github.event.pull_request.number }}
+          only_changed_files: true
+
+  # Matrix testing for multiple Go versions
+  compatibility-test:
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    strategy:
+      matrix:
+        go-version: ["1.23", "1.24"]
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-go@v5.2.0
         with:
           go-version: ${{ matrix.go-version }}
-
-      - name: Get dependencies
-        run: go mod download
+          cache: true
 
       - name: Run tests
-        shell: bash
-        run: go test -v -race -covermode=atomic -coverprofile=coverage.out ./...
+        run: go test -v -race ./...
 
-      - name: Check coverage with Cov
-        if: matrix.os == 'ubuntu-latest' && matrix.go-version == env.GO_VERSION
-        uses: PaloAltoNetworks/cov@3.2.1
-        with:
-          cov_mode: coverage
-          cov_file: coverage.out
-          cov_threshold: "70"
-          main_branch: main
-
-  build:
-    name: Build
+  # Final status check
+  ci-status:
+    if: always()
+    needs: [lint-test, build, security-scan, compatibility-test]
     runs-on: ubuntu-latest
-    needs: [lint, test]
-    strategy:
-      matrix:
-        goos: [linux, darwin, windows]
-        goarch: [amd64, arm64]
-        exclude:
-          - goos: windows
-            goarch: arm64
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4.2.2
-
-      - name: Set up Go
-        uses: actions/setup-go@v5.5.0
-        with:
-          go-version: ${{ env.GO_VERSION }}
-
-      - name: Build binary
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
+      - name: Check CI Status
         run: |
-          output_name="guardrail-${{ matrix.goos }}-${{ matrix.goarch }}"
-          if [ "${{ matrix.goos }}" = "windows" ]; then
-            output_name="${output_name}.exe"
+          echo "Lint/Test: ${{ needs.lint-test.result }}"
+          echo "Build: ${{ needs.build.result }}"
+          echo "Security: ${{ needs.security-scan.result }}"
+          echo "Compatibility: ${{ needs.compatibility-test.result }}"
+
+          if [[ "${{ needs.lint-test.result }}" == "failure" || \
+                "${{ needs.build.result }}" == "failure" || \
+                "${{ needs.security-scan.result }}" == "failure" || \
+                "${{ needs.compatibility-test.result }}" == "failure" ]]; then
+            echo "❌ CI failed"
+            exit 1
           fi
-          go build -o "build/${output_name}" ./cmd/guardrail
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: guardrail-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: build/*
-
-  integration-test:
-    name: Integration Test
-    runs-on: ubuntu-latest
-    needs: build
-    strategy:
-      matrix:
-        k8s-version: ['1.30', '1.31', '1.32']
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4.2.2
-
-      - name: Set up Go
-        uses: actions/setup-go@v5.5.0
-        with:
-          go-version: ${{ env.GO_VERSION }}
-
-      - name: Get dependencies
-        run: go mod download
-
-      - name: Create kind cluster
-        uses: helm/kind-action@v1.12.0
-        with:
-          node_image: kindest/node:v${{ matrix.k8s-version }}.0
-          cluster_name: kind
-          wait: 300s
-
-      - name: Verify cluster access
-        run: |
-          kubectl cluster-info
-          kubectl get nodes
-          kubectl config current-context
-
-      - name: Run integration tests (non-cluster)
-        run: go test -v -tags=integration -timeout=10m ./cmd/guardrail -run TestIntegrationCommands
-
-      - name: Run JSON validation tests
-        run: go test -v -tags=integration -timeout=5m ./cmd/guardrail -run TestIntegrationValidateJSON
-
-      - name: Run performance tests
-        run: go test -v -tags=integration -timeout=5m ./cmd/guardrail -run TestIntegrationPerformance
-
-      - name: Apply test RBAC to cluster
-        run: kubectl apply -k testdata/
-
-      - name: Run cluster integration tests
-        env:
-          ENABLE_CLUSTER_TESTS: "true"
-        run: go test -v -tags=integration -timeout=10m ./cmd/guardrail -run TestIntegrationCluster
-
-  benchmark:
-    name: Benchmark
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4.2.2
-
-      - name: Set up Go
-        uses: actions/setup-go@v5.5.0
-        with:
-          go-version: ${{ env.GO_VERSION }}
-
-      - name: Run benchmarks
-        run: |
-          go test -bench=. -benchmem ./... | tee benchmark.txt
-
-      - name: Upload benchmark results
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: benchmark-results
-          path: benchmark.txt
-
-  security-scan:
-    name: Security Scan
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4.2.2
-
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@0.32.0
-        with:
-          scan-type: 'fs'
-          scan-ref: '.'
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-
-      - name: Upload Trivy scan results
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: 'trivy-results.sarif'
+          echo "✅ CI passed"

@@ -45,7 +45,6 @@ archives:
       - README.md
       - LICENSE
       - configs/*
-      - testdata/*
 
 checksum:
   name_template: 'checksums.txt'
@@ -82,7 +81,7 @@ brews:
     name: guardrail
     homepage: "https://github.com/coolguy1771/guardrail"
     description: "Kubernetes RBAC validation tool"
-    license: "MIT"
+    license: "Apache-2.0"
     test: |
       system "#{bin}/guardrail", "--version"
     dependencies:
@@ -148,7 +147,7 @@ nfpms:
     homepage: https://github.com/coolguy1771/guardrail
     description: Kubernetes RBAC validation tool
     maintainer: coolguy1771
-    license: MIT
+    license: Apache-2.0
     vendor: guardrail
     formats:
       - deb
