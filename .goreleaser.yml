@@ -134,19 +134,19 @@ changelog:
     - title: Others
       order: 999
 
-brews:
-  - repository:
-      owner: coolguy1771
-      name: homebrew-tap
-    name: guardrail
-    homepage: "https://github.com/coolguy1771/guardrail"
-    description: "Kubernetes RBAC validation tool"
-    license: "Apache-2.0"
-    test: |
-      system "#{bin}/guardrail", "--version"
-    dependencies:
-      - name: kubectl
-        type: optional
+# brews:
+#   - repository:
+#       owner: coolguy1771
+#       name: homebrew-tap
+#     name: guardrail
+#     homepage: "https://github.com/coolguy1771/guardrail"
+#     description: "Kubernetes RBAC validation tool"
+#     license: "Apache-2.0"
+#     test: |
+#       system "#{bin}/guardrail", "--version"
+#     dependencies:
+#       - name: kubectl
+#         type: optional
 
 dockers:
   - image_templates:
