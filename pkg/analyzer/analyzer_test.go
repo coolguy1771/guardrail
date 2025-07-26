@@ -696,7 +696,11 @@ func TestFormatAPIGroups(t *testing.T) {
 		{name: "core group only", apiGroups: []string{""}, expected: "in API groups: core"},
 		{name: "single group", apiGroups: []string{"apps"}, expected: "in API groups: apps"},
 		{name: "multiple groups", apiGroups: []string{"apps", "batch"}, expected: "in API groups: apps, batch"},
-		{name: "core and other groups", apiGroups: []string{"", "apps", "batch"}, expected: "in API groups: core, apps, batch"},
+		{
+			name:      "core and other groups",
+			apiGroups: []string{"", "apps", "batch"},
+			expected:  "in API groups: core, apps, batch",
+		},
 		{name: "wildcard", apiGroups: []string{"*"}, expected: "in ALL API groups"},
 	}
 

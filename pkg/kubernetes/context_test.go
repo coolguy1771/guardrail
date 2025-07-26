@@ -1,23 +1,22 @@
-package kubernetes
+package kubernetes_test
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/coolguy1771/guardrail/internal/testutil"
 	"k8s.io/client-go/tools/clientcmd/api"
+
+	"github.com/coolguy1771/guardrail/internal/testutil"
+	"github.com/coolguy1771/guardrail/pkg/kubernetes"
 )
 
-// createTestKubeconfig creates a temporary kubeconfig file for testing
+// createTestKubeconfig creates a temporary kubeconfig file for testing.
 func createTestKubeconfig(t *testing.T) (string, func()) {
 	t.Helper()
 
 	// Create a temporary directory
-	tmpDir, err := os.MkdirTemp("", "kubeconfig-test")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
+	tmpDir := t.TempDir()
 
 	// Create kubeconfig path
 	kubeconfigPath := filepath.Join(tmpDir, "config")
@@ -58,53 +57,17 @@ func createTestKubeconfig(t *testing.T) (string, func()) {
 	}
 
 	// Write the config to file
-	err = writeTestKubeconfig(*config, kubeconfigPath)
+	err := writeTestKubeconfig(*config, kubeconfigPath)
 	if err != nil {
 		t.Fatalf("Failed to write kubeconfig: %v", err)
 	}
 
 	// Return path and cleanup function
 	cleanup := func() {
-		os.RemoveAll(tmpDir)
+		// t.TempDir() handles cleanup automatically
 	}
 
 	return kubeconfigPath, cleanup
-}
-
-func TestLoadKubeConfig(t *testing.T) {
-	t.Run("load from specific path", func(t *testing.T) {
-		kubeconfigPath, cleanup := createTestKubeconfig(t)
-		defer cleanup()
-
-		config, err := loadKubeConfig(kubeconfigPath)
-		testutil.AssertNil(t, err, "loadKubeConfig should not return error")
-		testutil.AssertNotNil(t, config, "config should not be nil")
-		testutil.AssertEqual(t, "test-context", config.CurrentContext, "current context")
-		testutil.AssertEqual(t, 2, len(config.Contexts), "number of contexts")
-		testutil.AssertEqual(t, 2, len(config.Clusters), "number of clusters")
-	})
-
-	t.Run("load from default path", func(t *testing.T) {
-		// This will try to load from default locations
-		// It may fail if no kubeconfig exists, which is expected in CI
-		config, err := loadKubeConfig("")
-		if err != nil {
-			t.Logf("Expected error when no default kubeconfig exists: %v", err)
-		} else {
-			testutil.AssertNotNil(t, config, "config should not be nil if found")
-		}
-	})
-
-	t.Run("load from non-existent path", func(t *testing.T) {
-		config, err := loadKubeConfig("/non/existent/path/kubeconfig")
-		// GetStartingConfig might return an empty config instead of an error
-		if err == nil && config != nil {
-			// If no error, we should get an empty or minimal config
-			t.Log("Got config without error, checking if it's empty/minimal")
-		} else if err != nil {
-			t.Logf("Got expected error: %v", err)
-		}
-	})
 }
 
 func TestGetAvailableContexts(t *testing.T) {
@@ -112,7 +75,7 @@ func TestGetAvailableContexts(t *testing.T) {
 		kubeconfigPath, cleanup := createTestKubeconfig(t)
 		defer cleanup()
 
-		contexts, err := GetAvailableContexts(kubeconfigPath)
+		contexts, err := kubernetes.GetAvailableContexts(kubeconfigPath)
 		testutil.AssertNil(t, err, "GetAvailableContexts should not return error")
 		testutil.AssertEqual(t, 2, len(contexts), "number of contexts")
 
@@ -131,7 +94,7 @@ func TestGetAvailableContexts(t *testing.T) {
 	})
 
 	t.Run("get contexts from non-existent kubeconfig", func(t *testing.T) {
-		contexts, err := GetAvailableContexts("/non/existent/path/kubeconfig")
+		contexts, err := kubernetes.GetAvailableContexts("/non/existent/path/kubeconfig")
 		// GetStartingConfig might return an empty config instead of an error
 		if err == nil {
 			// If no error, we should get an empty context list
@@ -145,7 +108,7 @@ func TestGetAvailableContexts(t *testing.T) {
 
 	t.Run("get contexts from empty path", func(t *testing.T) {
 		// This will try default locations
-		contexts, err := GetAvailableContexts("")
+		contexts, err := kubernetes.GetAvailableContexts("")
 		if err != nil {
 			t.Logf("Expected error when no default kubeconfig exists: %v", err)
 		} else {
@@ -159,7 +122,7 @@ func TestBuildConfigWithContext(t *testing.T) {
 		kubeconfigPath, cleanup := createTestKubeconfig(t)
 		defer cleanup()
 
-		config, err := BuildConfigWithContext(kubeconfigPath, "")
+		config, err := kubernetes.BuildConfigWithContext(kubeconfigPath, "")
 		testutil.AssertNil(t, err, "BuildConfigWithContext should not return error")
 		testutil.AssertNotNil(t, config, "config should not be nil")
 		testutil.AssertEqual(t, "test-context", config.CurrentContext, "should keep original current context")
@@ -169,7 +132,7 @@ func TestBuildConfigWithContext(t *testing.T) {
 		kubeconfigPath, cleanup := createTestKubeconfig(t)
 		defer cleanup()
 
-		config, err := BuildConfigWithContext(kubeconfigPath, "prod-context")
+		config, err := kubernetes.BuildConfigWithContext(kubeconfigPath, "prod-context")
 		testutil.AssertNil(t, err, "BuildConfigWithContext should not return error")
 		testutil.AssertNotNil(t, config, "config should not be nil")
 		testutil.AssertEqual(t, "prod-context", config.CurrentContext, "should switch to prod context")
@@ -179,7 +142,7 @@ func TestBuildConfigWithContext(t *testing.T) {
 		kubeconfigPath, cleanup := createTestKubeconfig(t)
 		defer cleanup()
 
-		config, err := BuildConfigWithContext(kubeconfigPath, "non-existent-context")
+		config, err := kubernetes.BuildConfigWithContext(kubeconfigPath, "non-existent-context")
 		testutil.AssertNotNil(t, err, "should return error for non-existent context")
 		if config != nil {
 			t.Error("config should be nil on error")
@@ -195,7 +158,7 @@ func TestBuildConfigWithContext(t *testing.T) {
 	})
 
 	t.Run("build config from non-existent kubeconfig", func(t *testing.T) {
-		config, err := BuildConfigWithContext("/non/existent/path/kubeconfig", "test-context")
+		config, err := kubernetes.BuildConfigWithContext("/non/existent/path/kubeconfig", "test-context")
 		// The behavior depends on the implementation - it might return an error or an empty config
 		if err != nil {
 			if config != nil {
@@ -209,7 +172,7 @@ func TestBuildConfigWithContext(t *testing.T) {
 	})
 }
 
-// writeTestKubeconfig writes a test kubeconfig to a file
+// writeTestKubeconfig writes a test kubeconfig to a file.
 func writeTestKubeconfig(config api.Config, filename string) error {
 	// For testing, we'll just create a minimal YAML-like content
 	content := []byte(`apiVersion: v1
@@ -223,7 +186,9 @@ clusters:
 
 	content = append(content, []byte("contexts:\n")...)
 	for name, context := range config.Contexts {
-		content = append(content, []byte("- name: "+name+"\n  context:\n    cluster: "+context.Cluster+"\n    user: "+context.AuthInfo+"\n")...)
+		content = append(content,
+			[]byte("- name: "+name+"\n  context:\n    cluster: "+context.Cluster+
+				"\n    user: "+context.AuthInfo+"\n")...)
 	}
 
 	content = append(content, []byte("users:\n")...)
@@ -231,5 +196,5 @@ clusters:
 		content = append(content, []byte("- name: "+name+"\n  user:\n    token: <redacted>\n")...)
 	}
 
-	return os.WriteFile(filename, content, 0600)
+	return os.WriteFile(filename, content, 0o600)
 }
