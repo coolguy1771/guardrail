@@ -58,10 +58,24 @@ jobs:
             platforms: "darwin/amd64,darwin/arm64"
           - os: windows-latest
             platforms: "windows/amd64"
-    uses: ./.github/workflows/go-build.yml
-    with:
-      go-version: "1.24"
-      platforms: ${{ matrix.platforms }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-go@v5.2.0
+        with:
+          go-version: "1.24"
+          cache: true
+      
+      - name: Build for ${{ matrix.platforms }}
+        shell: bash
+        run: make build-cross PLATFORMS="${{ matrix.platforms }}"
+      
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: guardrail-${{ matrix.os }}
+          path: build/*
+          retention-days: 7
 
   # Security scanning (CodeQL only - other tools run in lint job)
   security-scan:

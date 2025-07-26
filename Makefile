@@ -10,8 +10,21 @@ GO_FILES=$(shell find . -name '*.go' -type f)
 build:
 	@echo "Building $(BINARY_NAME)..."
 	@mkdir -p build
-	@go build -o $(BINARY_PATH) $(CMD_PATH)
+	@go build -ldflags="-s -w" -o $(BINARY_PATH) $(CMD_PATH)
 	@echo "Build complete: $(BINARY_PATH)"
+
+# Cross-platform build
+build-cross:
+	@echo "Building for multiple platforms..."
+	@mkdir -p build
+	@for platform in $(PLATFORMS); do \
+		IFS='/' read -r os arch <<< "$$platform"; \
+		ext=""; \
+		[ "$$os" = "windows" ] && ext=".exe"; \
+		echo "Building for $$os/$$arch..."; \
+		GOOS=$$os GOARCH=$$arch go build -ldflags="-s -w" -o "build/$(BINARY_NAME)-$$os-$$arch$$ext" $(CMD_PATH); \
+	done
+	@echo "Cross-platform build complete"
 
 # Install the binary
 install:
@@ -135,6 +148,7 @@ pre-commit: fmt tidy lint test
 help:
 	@echo "Available targets:"
 	@echo "  build              - Build the binary"
+	@echo "  build-cross        - Build for multiple platforms (set PLATFORMS='os/arch,os/arch')"
 	@echo "  install            - Install the binary using go install"
 	@echo "  test               - Run tests with race detection"
 	@echo "  test-coverage      - Run tests with coverage report"
