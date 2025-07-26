@@ -1,34 +1,17 @@
-FROM alpine:3.22@sha256:4bcff63911fcb4448bd4fdacec207030997caf25e9bea4045fa6c8c44de311d1
+FROM gcr.io/distroless/static:nonroot
 
-# Install ca-certificates for HTTPS requests
-RUN apk add --no-cache ca-certificates
+WORKDIR /
 
-WORKDIR /root/
+# Copy the pre-built binary (distroless has no /usr/local/bin)
+COPY guardrail /guardrail
 
-# Create non-root user
-RUN addgroup -g 1001 guardrail && \
-    adduser -D -u 1001 -G guardrail guardrail
+# Copy configuration files
+COPY configs/guardrail.yaml /etc/guardrail/guardrail.yaml
 
-# Copy the pre-built binary
-COPY guardrail /usr/local/bin/guardrail
-
-# Copy configuration files if they exist
-COPY configs/* /etc/guardrail/
-
-# Create necessary directories
-RUN mkdir -p /app/data && \
-    chown -R guardrail:guardrail /app && \
-    chmod +x /usr/local/bin/guardrail
-
-# Switch to non-root user
-USER guardrail
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD guardrail --version || exit 1
+# USER is already nonroot (65532) in distroless/static:nonroot
 
 # Set the entrypoint
-ENTRYPOINT ["guardrail"]
+ENTRYPOINT ["/guardrail"]
 
 # Default command
 CMD ["--help"]

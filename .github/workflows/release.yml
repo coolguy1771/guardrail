@@ -38,6 +38,14 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y upx
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: ~/.cache/goreleaser
@@ -53,54 +61,6 @@ jobs:
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: ./dist/checksums.txt
-
-  docker-build:
-    needs: release-binaries
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4.2.2
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
-        with:
-          go-version: "1.24"
-      - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
-      - uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - id: meta
-        uses: docker/metadata-action@902fa8ec7d6ecbf8d84d538b9b233a880e428804 # v5.7.0
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=ref,event=semver
-            type=sha
-      - uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@0.32.0
-        with:
-          scan-type: "image"
-          image-ref: ${{ steps.meta.outputs.tags }}
-          format: "sarif"
-          output: "trivy-docker-results.sarif"
-          severity: "CRITICAL,HIGH"
-          exit-code: "1"
-
-      - name: Upload Trivy scan results to GitHub Security tab
-        if: always()
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: "trivy-docker-results.sarif"
-          category: trivy-docker-release
 
   create-release-notes:
     needs: release-binaries
