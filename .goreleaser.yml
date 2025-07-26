@@ -58,7 +58,7 @@ archives:
       {{- if .Arm }}v{{ .Arm }}{{ end }}
     format_overrides:
       - goos: windows
-        format: zip
+        formats: ['zip']
     files:
       - README.md
       - LICENSE
@@ -98,12 +98,7 @@ sboms:
   - artifacts: archive
     id: archive-sbom
     documents:
-      - "${artifact}.spdx.json"
-    args: ["$artifact", "--file", "$document", "--output", "spdx-json"]
-  - artifacts: binary
-    id: binary-sbom
-    documents:
-      - "${artifact}.spdx.json"
+      - "${artifact}.archive.spdx.json"
     args: ["$artifact", "--file", "$document", "--output", "spdx-json"]
 
 # Report binary sizes
@@ -153,29 +148,33 @@ dockers:
       - "ghcr.io/coolguy1771/guardrail:{{ .Tag }}-amd64"
       - "ghcr.io/coolguy1771/guardrail:latest-amd64"
     use: buildx
+    goos: linux
+    goarch: amd64
     build_flag_templates:
       - "--platform=linux/amd64"
       - "--label=org.opencontainers.image.created={{.Date}}"
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
-    dockerfile: Dockerfile
+    dockerfile: Dockerfile.goreleaser
     extra_files:
-      - configs/
+      - configs/guardrail.yaml
 
   - image_templates:
       - "ghcr.io/coolguy1771/guardrail:{{ .Tag }}-arm64"
       - "ghcr.io/coolguy1771/guardrail:latest-arm64"
     use: buildx
+    goos: linux
+    goarch: arm64
     build_flag_templates:
       - "--platform=linux/arm64"
       - "--label=org.opencontainers.image.created={{.Date}}"
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
-    dockerfile: Dockerfile
+    dockerfile: Dockerfile.goreleaser
     extra_files:
-      - configs/
+      - configs/guardrail.yaml
 
 docker_manifests:
   - name_template: "ghcr.io/coolguy1771/guardrail:{{ .Tag }}"
