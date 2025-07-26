@@ -63,7 +63,7 @@ jobs:
       go-version: "1.24"
       platforms: ${{ matrix.platforms }}
 
-  # Security scanning
+  # Security scanning (CodeQL only - other tools run in lint job)
   security-scan:
     needs: changes
     if: needs.changes.outputs.go == 'true'
@@ -75,27 +75,7 @@ jobs:
           go-version: "1.24"
           cache: true
 
-      # Run go vet
-      - name: Run go vet
-        run: go vet ./...
-
-      # Run gosec security scanner
-      - uses: securego/gosec@v2.21.4
-        with:
-          args: "-fmt sarif -out gosec-results.sarif ./..."
-
-      - name: Upload SARIF file
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: gosec-results.sarif
-
-      # Run staticcheck
-      - uses: dominikh/staticcheck-action@v1.3.1
-        with:
-          version: "latest"
-          install-go: false
-
-      # Run CodeQL
+      # Run CodeQL (unique to this job)
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
@@ -154,29 +134,11 @@ jobs:
           pull_request_number: ${{ github.event.pull_request.number }}
           only_changed_files: true
 
-  # Matrix testing for multiple Go versions
-  compatibility-test:
-    needs: changes
-    if: needs.changes.outputs.go == 'true'
-    strategy:
-      matrix:
-        go-version: ["1.24"]
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4.2.2
-      - uses: actions/setup-go@v5.2.0
-        with:
-          go-version: ${{ matrix.go-version }}
-          cache: true
-
-      - name: Run tests
-        run: go test -v -race ./...
 
   # Final status check
   ci-status:
     if: always()
-    needs: [lint-test, build, security-scan, compatibility-test]
+    needs: [lint-test, build, security-scan]
     runs-on: ubuntu-latest
     steps:
       - name: Check CI Status
@@ -184,12 +146,10 @@ jobs:
           echo "Lint/Test: ${{ needs.lint-test.result }}"
           echo "Build: ${{ needs.build.result }}"
           echo "Security: ${{ needs.security-scan.result }}"
-          echo "Compatibility: ${{ needs.compatibility-test.result }}"
 
           if [[ "${{ needs.lint-test.result }}" == "failure" || \
                 "${{ needs.build.result }}" == "failure" || \
-                "${{ needs.security-scan.result }}" == "failure" || \
-                "${{ needs.compatibility-test.result }}" == "failure" ]]; then
+                "${{ needs.security-scan.result }}" == "failure" ]]; then
             echo "❌ CI failed"
             exit 1
           fi

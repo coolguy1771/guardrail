@@ -44,7 +44,13 @@ jobs:
           cache: true
 
       - name: Run tests with coverage
-        run: go test -v -race -covermode=atomic -coverprofile=coverage.out ./...
+        shell: bash
+        run: |
+          if [[ "${{ matrix.os }}" == "ubuntu-latest" ]]; then
+            make test-coverage
+          else
+            make test
+          fi
 
       - name: Upload coverage artifact
         if: matrix.os == 'ubuntu-latest'
