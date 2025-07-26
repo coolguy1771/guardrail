@@ -18,6 +18,9 @@ COPY . .
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o guardrail ./cmd/guardrail
 
+# Ensure configs directory exists for copying
+RUN mkdir -p /app/configs || true
+
 # Final stage
 FROM alpine:3.22@sha256:4bcff63911fcb4448bd4fdacec207030997caf25e9bea4045fa6c8c44de311d1
 
@@ -34,7 +37,7 @@ RUN addgroup -g 1001 guardrail && \
 COPY --from=builder /app/guardrail .
 
 # Copy configuration files
-COPY --from=builder /app/configs /etc/guardrail/
+COPY --from=builder /app/configs/ /etc/guardrail/
 
 # Create necessary directories
 RUN mkdir -p /app/data && \

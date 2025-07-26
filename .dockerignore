@@ -1,0 +1,48 @@
+# Git files
+.git
+.gitignore
+.github
+
+# Build artifacts
+/build/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test files
+*_test.go
+/testdata/
+coverage.out
+coverage.html
+cov.report
+*.test
+
+# Documentation
+*.md
+/docs/
+LICENSE
+
+# Development files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# CI/CD
+.travis.yml
+.gitlab-ci.yml
+Jenkinsfile
+
+# Keep configs directory
+!configs/

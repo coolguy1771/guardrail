@@ -1,0 +1,171 @@
+# Guardrail Configuration
+# Default configuration for Kubernetes RBAC validation and analysis
+
+# Output format configuration
+output:
+  # Format: text, json, sarif, yaml
+  format: text
+  # Verbosity: quiet, normal, verbose
+  verbosity: normal
+  # Include timestamp in output
+  include_timestamp: true
+  # Color output (auto, always, never)
+  color: auto
+
+# Validation rules configuration
+rules:
+  # RBAC001: Wildcard permissions check
+  RBAC001:
+    enabled: true
+    severity: CRITICAL
+    description: "Detects wildcard (*) permissions in RBAC rules"
+    remediation: "Replace wildcard permissions with specific resource and verb combinations"
+  
+  # RBAC002: Admin role binding check
+  RBAC002:
+    enabled: true
+    severity: HIGH
+    description: "Detects bindings to cluster-admin or admin roles"
+    remediation: "Use principle of least privilege - create custom roles with minimal required permissions"
+  
+  # RBAC003: Privilege escalation check
+  RBAC003:
+    enabled: true
+    severity: HIGH
+    description: "Detects potential privilege escalation through bind, escalate, or impersonate verbs"
+    remediation: "Restrict bind, escalate, and impersonate permissions to trusted service accounts only"
+  
+  # RBAC004: Secrets access check
+  RBAC004:
+    enabled: true
+    severity: MEDIUM
+    description: "Detects broad access to secrets"
+    remediation: "Limit secrets access to specific namespaces and secret names when possible"
+  
+  # RBAC005: System resource access
+  RBAC005:
+    enabled: true
+    severity: HIGH
+    description: "Detects access to system-critical resources"
+    remediation: "Avoid granting access to system namespaces (kube-system, kube-public)"
+  
+  # RBAC006: Service account token access
+  RBAC006:
+    enabled: true
+    severity: MEDIUM
+    description: "Detects ability to create or modify service account tokens"
+    remediation: "Restrict token creation to automated systems only"
+
+# Analysis configuration
+analysis:
+  # Risk scoring weights
+  risk_weights:
+    wildcard_resource: 10
+    wildcard_verb: 8
+    admin_permission: 10
+    privilege_escalation: 9
+    secrets_access: 7
+    system_namespace: 8
+  
+  # Risk level thresholds
+  risk_levels:
+    critical: 25
+    high: 15
+    medium: 8
+    low: 0
+
+# Kubernetes client configuration
+kubernetes:
+  # Path to kubeconfig file (empty = use default locations)
+  kubeconfig: ""
+  # Kubernetes context to use (empty = current context)
+  context: ""
+  # Namespace to analyze (empty = all namespaces)
+  namespace: ""
+  # API request timeout in seconds
+  timeout: 30
+  # Rate limiting
+  qps: 50
+  burst: 100
+
+# Security scanning configuration
+security:
+  # Check for common security anti-patterns
+  check_antipatterns: true
+  # Validate against CIS Kubernetes Benchmark
+  cis_compliance: true
+  # Check for NIST compliance
+  nist_compliance: true
+  # Custom policy directory
+  custom_policies_dir: ""
+
+# Reporting configuration
+reporting:
+  # Include remediation suggestions in reports
+  include_remediation: true
+  # Include risk analysis in reports
+  include_risk_analysis: true
+  # Group findings by resource type
+  group_by_resource: false
+  # Group findings by namespace
+  group_by_namespace: true
+  # Include summary statistics
+  include_summary: true
+  # Maximum findings to display (0 = unlimited)
+  max_findings: 0
+  # Sort findings by severity
+  sort_by_severity: true
+
+# Integration configuration
+integrations:
+  # GitHub integration
+  github:
+    enabled: false
+    # Create issues for findings
+    create_issues: false
+    # Add comments to PRs
+    pr_comments: false
+  
+  # Slack notifications
+  slack:
+    enabled: false
+    webhook_url: ""
+    # Minimum severity to notify
+    min_severity: HIGH
+  
+  # SARIF output for CI/CD
+  sarif:
+    # Include rule help URLs
+    include_help_urls: true
+    # Tool information
+    tool_name: "Guardrail"
+    tool_version: "1.0.0"
+
+# Caching configuration
+cache:
+  # Enable caching of Kubernetes API responses
+  enabled: true
+  # Cache directory
+  directory: "~/.guardrail/cache"
+  # Cache TTL in minutes
+  ttl: 60
+
+# Logging configuration
+logging:
+  # Log level: debug, info, warn, error
+  level: info
+  # Log format: text, json
+  format: text
+  # Log file path (empty = stdout)
+  file: ""
+  # Include caller information
+  include_caller: false
+
+# Performance configuration
+performance:
+  # Maximum concurrent workers
+  max_workers: 10
+  # Enable profiling
+  profiling: false
+  # Profiling output directory
+  profiling_dir: "~/.guardrail/profiles"
