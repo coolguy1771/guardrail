@@ -89,7 +89,7 @@ jobs:
         uses: mikepenz/release-changelog-builder-action@v5.0.2
         with:
           configuration: .github/changelog-config.json
-      - uses: softprops/action-gh-release@v2.3.0
+      - uses: softprops/action-gh-release@72f2c25fcb47643c292f7107632f7a47c1df5cd8 # v2.3.2
         with:
           tag_name: ${{ github.ref }}
           body: ${{ steps.changelog.outputs.changelog }}
