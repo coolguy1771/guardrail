@@ -86,7 +86,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4.2.2
       - id: changelog
-        uses: mikepenz/release-changelog-builder-action@v5.0.2
+        uses: mikepenz/release-changelog-builder-action@c9dc8369bccbc41e0ac887f8fd674f5925d315f7 # v5.4.1
         with:
           configuration: .github/changelog-config.json
       - uses: softprops/action-gh-release@v2.3.0
