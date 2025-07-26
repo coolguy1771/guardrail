@@ -490,3 +490,274 @@ func TestAnalyzeBinding(t *testing.T) {
 		testutil.AssertEqual(t, "default", result[1].Subject.Namespace, "second subject namespace")
 	}
 }
+
+func TestAnalyzeClusterRoleBinding(t *testing.T) {
+	// Create test cluster role
+	clusterRole := &rbacv1.ClusterRole{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test-cluster-role",
+		},
+		Rules: []rbacv1.PolicyRule{
+			{
+				APIGroups: []string{""},
+				Resources: []string{"nodes"},
+				Verbs:     []string{"get", "list"},
+			},
+		},
+	}
+
+	// Create role map
+	roleMap := map[string]runtime.Object{
+		"ClusterRole//test-cluster-role": clusterRole,
+	}
+
+	// Create cluster role binding
+	binding := &rbacv1.ClusterRoleBinding{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test-cluster-binding",
+		},
+		RoleRef: rbacv1.RoleRef{
+			Kind:     "ClusterRole",
+			Name:     "test-cluster-role",
+			APIGroup: "rbac.authorization.k8s.io",
+		},
+		Subjects: []rbacv1.Subject{
+			{
+				Kind: "Group",
+				Name: "system:authenticated",
+			},
+			{
+				Kind:      "ServiceAccount",
+				Name:      "admin",
+				Namespace: "kube-system",
+			},
+		},
+	}
+
+	analyzer := &Analyzer{}
+	result := analyzer.analyzeBinding(binding, roleMap)
+
+	testutil.AssertEqual(t, 2, len(result), "should have 2 subject permissions")
+
+	// Check first subject (Group)
+	if len(result) > 0 {
+		testutil.AssertEqual(t, "Group", result[0].Subject.Kind, "first subject kind")
+		testutil.AssertEqual(t, "system:authenticated", result[0].Subject.Name, "first subject name")
+		testutil.AssertEqual(t, 1, len(result[0].Permissions), "first subject permissions count")
+		testutil.AssertEqual(t, "cluster-wide", result[0].Permissions[0].Scope, "first subject scope")
+	}
+
+	// Check second subject (ServiceAccount)
+	if len(result) > 1 {
+		testutil.AssertEqual(t, "ServiceAccount", result[1].Subject.Kind, "second subject kind")
+		testutil.AssertEqual(t, "admin", result[1].Subject.Name, "second subject name")
+		testutil.AssertEqual(t, "kube-system", result[1].Subject.Namespace, "second subject namespace")
+	}
+}
+
+func TestAnalyzeClusterRoleBinding_MissingRole(t *testing.T) {
+	// Create empty role map
+	roleMap := map[string]runtime.Object{}
+
+	// Create cluster role binding with missing role
+	binding := &rbacv1.ClusterRoleBinding{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test-missing-binding",
+		},
+		RoleRef: rbacv1.RoleRef{
+			Kind:     "ClusterRole",
+			Name:     "missing-role",
+			APIGroup: "rbac.authorization.k8s.io",
+		},
+		Subjects: []rbacv1.Subject{
+			{
+				Kind: "User",
+				Name: "bob",
+			},
+		},
+	}
+
+	analyzer := &Analyzer{}
+	result := analyzer.analyzeBinding(binding, roleMap)
+
+	testutil.AssertEqual(t, 1, len(result), "should have 1 subject permission")
+	testutil.AssertEqual(t, 0, len(result[0].Permissions[0].Rules), "should have empty rules for missing role")
+	testutil.AssertEqual(t, RiskLevelLow, result[0].RiskLevel, "should have low risk for missing role")
+}
+
+func TestEscalateRiskLevel(t *testing.T) {
+	tests := []struct {
+		name     string
+		current  string
+		expected string
+	}{
+		{name: "low to medium", current: "low", expected: "medium"},
+		{name: "medium to high", current: "medium", expected: "high"},
+		{name: "high to critical", current: "high", expected: "critical"},
+		{name: "critical stays critical", current: "critical", expected: "critical"},
+		{name: "unknown defaults to critical", current: "unknown", expected: "critical"},
+	}
+
+	analyzer := &Analyzer{}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := analyzer.escalateRiskLevel(tt.current)
+			testutil.AssertEqual(t, tt.expected, result, "risk level escalation")
+		})
+	}
+}
+
+func TestAnalyzeSecurityImpact(t *testing.T) {
+	tests := []struct {
+		name          string
+		rule          rbacv1.PolicyRule
+		expectedLevel string
+		expectedDesc  string
+	}{
+		{
+			name: "standard resource access",
+			rule: rbacv1.PolicyRule{
+				APIGroups: []string{""},
+				Resources: []string{"pods"},
+				Verbs:     []string{"get", "list"},
+			},
+			expectedLevel: string(RiskLevelLow),
+			expectedDesc:  "Standard resource access",
+		},
+		{
+			name: "escalate verb",
+			rule: rbacv1.PolicyRule{
+				APIGroups: []string{"rbac.authorization.k8s.io"},
+				Resources: []string{"clusterroles"},
+				Verbs:     []string{"escalate"},
+			},
+			expectedLevel: string(RiskLevelMedium),
+			expectedDesc:  "Standard resource access",
+		},
+		{
+			name: "impersonate verb",
+			rule: rbacv1.PolicyRule{
+				APIGroups: []string{""},
+				Resources: []string{"users"},
+				Verbs:     []string{"impersonate"},
+			},
+			expectedLevel: string(RiskLevelMedium),
+			expectedDesc:  "Standard resource access",
+		},
+		{
+			name: "secrets access",
+			rule: rbacv1.PolicyRule{
+				APIGroups: []string{""},
+				Resources: []string{"secrets"},
+				Verbs:     []string{"get", "list"},
+			},
+			expectedLevel: string(RiskLevelMedium),
+			expectedDesc:  "Standard resource access",
+		},
+		{
+			name: "wildcard resources",
+			rule: rbacv1.PolicyRule{
+				APIGroups: []string{"*"},
+				Resources: []string{"*"},
+				Verbs:     []string{"get"},
+			},
+			expectedLevel: string(RiskLevelHigh),
+			expectedDesc:  "Access to all resources with specified permissions",
+		},
+		{
+			name: "admin verbs",
+			rule: rbacv1.PolicyRule{
+				APIGroups: []string{"apps"},
+				Resources: []string{"deployments"},
+				Verbs:     []string{"create", "delete", "patch"},
+			},
+			expectedLevel: string(RiskLevelMedium),
+			expectedDesc:  "Standard resource access",
+		},
+	}
+
+	analyzer := &Analyzer{}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			impact := analyzer.analyzeSecurityImpact(tt.rule)
+			testutil.AssertEqual(t, tt.expectedLevel, string(impact.Level), "security impact level")
+			testutil.AssertEqual(t, tt.expectedDesc, impact.Description, "security impact description")
+		})
+	}
+}
+
+func TestFormatAPIGroups(t *testing.T) {
+	tests := []struct {
+		name      string
+		apiGroups []string
+		expected  string
+	}{
+		{name: "empty groups", apiGroups: []string{}, expected: ""},
+		{name: "core group only", apiGroups: []string{""}, expected: "in API groups: core"},
+		{name: "single group", apiGroups: []string{"apps"}, expected: "in API groups: apps"},
+		{name: "multiple groups", apiGroups: []string{"apps", "batch"}, expected: "in API groups: apps, batch"},
+		{name: "core and other groups", apiGroups: []string{"", "apps", "batch"}, expected: "in API groups: core, apps, batch"},
+		{name: "wildcard", apiGroups: []string{"*"}, expected: "in ALL API groups"},
+	}
+
+	analyzer := &Analyzer{}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := analyzer.formatAPIGroups(tt.apiGroups)
+			testutil.AssertEqual(t, tt.expected, result, "formatted API groups")
+		})
+	}
+}
+
+func TestAnalyzeRoleBinding_MissingRole(t *testing.T) {
+	// Create empty role map
+	roleMap := map[string]runtime.Object{}
+
+	// Create role binding with missing role
+	binding := &rbacv1.RoleBinding{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-missing-binding",
+			Namespace: "default",
+		},
+		RoleRef: rbacv1.RoleRef{
+			Kind:     "Role",
+			Name:     "missing-role",
+			APIGroup: "rbac.authorization.k8s.io",
+		},
+		Subjects: []rbacv1.Subject{
+			{
+				Kind: "User",
+				Name: "charlie",
+			},
+		},
+	}
+
+	analyzer := &Analyzer{}
+	result := analyzer.analyzeBinding(binding, roleMap)
+
+	testutil.AssertEqual(t, 1, len(result), "should have 1 subject permission")
+	testutil.AssertEqual(t, 0, len(result[0].Permissions[0].Rules), "should have empty rules for missing role")
+	testutil.AssertEqual(t, RiskLevelLow, result[0].RiskLevel, "should have low risk for missing role")
+}
+
+func TestGetRiskPriorityAnalyzer(t *testing.T) {
+	tests := []struct {
+		name     string
+		level    RiskLevel
+		expected int
+	}{
+		{name: "critical priority", level: RiskLevelCritical, expected: 4},
+		{name: "high priority", level: RiskLevelHigh, expected: 3},
+		{name: "medium priority", level: RiskLevelMedium, expected: 2},
+		{name: "low priority", level: RiskLevelLow, expected: 1},
+		{name: "unknown priority", level: "unknown", expected: 0},
+	}
+
+	analyzer := &Analyzer{}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := analyzer.getRiskPriority(tt.level)
+			testutil.AssertEqual(t, tt.expected, result, "risk priority")
+		})
+	}
+}

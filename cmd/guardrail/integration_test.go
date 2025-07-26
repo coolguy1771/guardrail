@@ -25,10 +25,10 @@ func TestIntegrationCommands(t *testing.T) {
 
 	// Build the binary once for all tests
 	binary := buildBinary(t)
-	
+
 	// Get the project root directory
 	projectRoot := getProjectRoot(t)
-	
+
 	tests := []struct {
 		name       string
 		args       []string
@@ -53,7 +53,7 @@ func TestIntegrationCommands(t *testing.T) {
 			args:     []string{"analyze", "--help"},
 			contains: []string{"Analyze RoleBindings and ClusterRoleBindings", "--subject", "--risk-level"},
 		},
-		
+
 		// Validate commands - positive cases
 		{
 			name:     "validate good role",
@@ -88,10 +88,10 @@ func TestIntegrationCommands(t *testing.T) {
 		{
 			name:     "validate multiple files",
 			args:     []string{"validate", "-f", filepath.Join(projectRoot, "testdata", "role-with-wildcard.yaml"), "-f", filepath.Join(projectRoot, "testdata", "role-secrets-access.yaml")},
-			wantErr:  true, // validation exits with error when HIGH severity issues found
+			wantErr:  true,                           // validation exits with error when HIGH severity issues found
 			contains: []string{"RBAC001", "RBAC003"}, // Should find issues from both files
 		},
-		
+
 		// Output formats
 		{
 			name:     "JSON output",
@@ -111,7 +111,7 @@ func TestIntegrationCommands(t *testing.T) {
 			wantErr:  true, // validation exits with error when issues found
 			contains: []string{"RBAC001", "HIGH"},
 		},
-		
+
 		// Analyze commands
 		{
 			name:     "analyze complex RBAC",
@@ -133,7 +133,7 @@ func TestIntegrationCommands(t *testing.T) {
 			args:     []string{"analyze", "-f", filepath.Join(projectRoot, "testdata", "complex-rbac.yaml"), "-o", "json"},
 			contains: []string{`"subjects":`, `"summary":`, `"total_subjects":`},
 		},
-		
+
 		// Filtering options
 		{
 			name:     "filter by high risk level",
@@ -157,7 +157,7 @@ func TestIntegrationCommands(t *testing.T) {
 			args:     []string{"analyze", "-f", filepath.Join(projectRoot, "testdata", "complex-rbac.yaml"), "--subject", "nonexistent@company.com"},
 			contains: []string{"No RBAC permissions found matching the criteria"},
 		},
-		
+
 		// Error cases
 		{
 			name:     "missing file",
@@ -200,7 +200,7 @@ func TestIntegrationCommands(t *testing.T) {
 			contains: []string{"No RBAC permissions found matching the criteria"},
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.skipReason != "" {
@@ -215,21 +215,21 @@ func TestIntegrationCommands(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 			cmd.Stdout = &stdout
 			cmd.Stderr = &stderr
-			
+
 			err := cmd.Run()
 			if (err != nil) != tt.wantErr {
 				t.Errorf("unexpected error: wantErr=%v, got=%v\nstderr: %s", tt.wantErr, err, stderr.String())
 			}
-			
+
 			output := stdout.String() + stderr.String()
-			
+
 			// Check for expected strings
 			for _, want := range tt.contains {
 				if !strings.Contains(output, want) {
 					t.Errorf("output missing expected string %q\nGot output:\n%s", want, truncateOutput(output))
 				}
 			}
-			
+
 			// Check for excluded strings
 			for _, exclude := range tt.excludes {
 				if strings.Contains(output, exclude) {
@@ -248,7 +248,7 @@ func TestIntegrationCluster(t *testing.T) {
 
 	// Get the project root directory
 	projectRoot := getProjectRoot(t)
-	
+
 	// Check if cluster tests are enabled
 	if os.Getenv("ENABLE_CLUSTER_TESTS") != "true" {
 		// Try to detect if a cluster is available
@@ -258,9 +258,9 @@ func TestIntegrationCluster(t *testing.T) {
 			t.Skip("Skipping cluster tests: no cluster access detected (set ENABLE_CLUSTER_TESTS=true to force)")
 		}
 	}
-	
+
 	binary := buildBinary(t)
-	
+
 	// Apply test resources using Kustomize
 	t.Log("Applying test resources using Kustomize...")
 	applyCmd := exec.Command("kubectl", "apply", "-k", filepath.Join(projectRoot, "testdata"))
@@ -268,19 +268,19 @@ func TestIntegrationCluster(t *testing.T) {
 	if output, err := applyCmd.CombinedOutput(); err != nil {
 		t.Logf("Warning: Failed to apply test resources: %v\nOutput: %s", err, output)
 	}
-	
+
 	// Clean up resources after tests
 	t.Cleanup(func() {
 		t.Log("Cleaning up test RBAC resources...")
 		// Use label selector to delete all test resources
-		deleteCmd := exec.Command("kubectl", "delete", "all,namespaces,clusterroles,clusterrolebindings,roles,rolebindings", 
+		deleteCmd := exec.Command("kubectl", "delete", "all,namespaces,clusterroles,clusterrolebindings,roles,rolebindings",
 			"-l", "test-suite=guardrail-integration", "--ignore-not-found=true")
 		deleteCmd.Dir = projectRoot
 		if output, err := deleteCmd.CombinedOutput(); err != nil {
 			t.Logf("Warning: Failed to clean up test resources: %v\nOutput: %s", err, output)
 		}
 	})
-	
+
 	tests := []struct {
 		name     string
 		args     []string
@@ -313,7 +313,7 @@ func TestIntegrationCluster(t *testing.T) {
 			contains: []string{"📊 RBAC Analysis Summary"},
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.setup != nil {
@@ -326,13 +326,13 @@ func TestIntegrationCluster(t *testing.T) {
 			cmd := exec.CommandContext(ctx, binary, tt.args...)
 			cmd.Dir = projectRoot
 			output, err := cmd.CombinedOutput()
-			
+
 			// For cluster tests, we're more lenient with errors
 			// as the cluster might not have any RBAC resources matching filters
 			if err != nil && !strings.Contains(string(output), "No RBAC permissions found") {
 				t.Logf("Command failed (might be expected): %v\nOutput: %s", err, truncateOutput(string(output)))
 			}
-			
+
 			for _, want := range tt.contains {
 				if !strings.Contains(string(output), want) {
 					t.Errorf("output missing expected string %q\nGot output:\n%s", want, truncateOutput(string(output)))
@@ -349,10 +349,10 @@ func TestIntegrationPerformance(t *testing.T) {
 	}
 
 	binary := buildBinary(t)
-	
+
 	// Get the project root directory
 	projectRoot := getProjectRoot(t)
-	
+
 	tests := []struct {
 		name        string
 		args        []string
@@ -369,20 +369,20 @@ func TestIntegrationPerformance(t *testing.T) {
 			maxDuration: 2 * time.Second,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			start := time.Now()
 			cmd := exec.Command(binary, tt.args...)
 			cmd.Dir = projectRoot
-			
+
 			if err := cmd.Run(); err != nil {
 				// For validate commands, error is expected when issues are found
 				if !strings.Contains(tt.name, "validate") {
 					t.Fatalf("Command failed: %v", err)
 				}
 			}
-			
+
 			duration := time.Since(start)
 			if duration > tt.maxDuration {
 				t.Errorf("Command took too long: %v > %v", duration, tt.maxDuration)
@@ -399,10 +399,10 @@ func TestIntegrationValidateJSON(t *testing.T) {
 	}
 
 	binary := buildBinary(t)
-	
+
 	// Get the project root directory
 	projectRoot := getProjectRoot(t)
-	
+
 	tests := []struct {
 		name string
 		args []string
@@ -416,7 +416,7 @@ func TestIntegrationValidateJSON(t *testing.T) {
 			args: []string{"analyze", "-f", filepath.Join(projectRoot, "testdata", "complex-rbac.yaml"), "-o", "json"},
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cmd := exec.Command(binary, tt.args...)
@@ -426,16 +426,16 @@ func TestIntegrationValidateJSON(t *testing.T) {
 			if err != nil && !strings.Contains(tt.name, "validate") {
 				t.Fatalf("Command failed: %v", err)
 			}
-			
+
 			// For validate commands with JSON output, extract only the JSON part (before error message)
 			jsonOutput := output
 			if strings.Contains(tt.name, "validate") && bytes.Contains(output, []byte("Error:")) {
 				// Find the end of JSON (last closing brace before "Error:")
-				if idx := bytes.LastIndex(output, []byte("}"));	idx != -1 {
+				if idx := bytes.LastIndex(output, []byte("}")); idx != -1 {
 					jsonOutput = output[:idx+1]
 				}
 			}
-			
+
 			// Validate JSON is parseable
 			var result interface{}
 			if err := json.Unmarshal(jsonOutput, &result); err != nil {
@@ -450,37 +450,37 @@ func TestIntegrationValidateJSON(t *testing.T) {
 // buildBinary builds the guardrail binary and returns its path
 func buildBinary(t *testing.T) string {
 	t.Helper()
-	
+
 	// Use a shared binary for all tests in the same test run
 	binaryName := fmt.Sprintf("guardrail-test-%d", os.Getpid())
 	if runtime.GOOS == "windows" {
 		binaryName += ".exe"
 	}
-	
+
 	binaryPath := filepath.Join(os.TempDir(), binaryName)
-	
+
 	// Check if binary already exists
 	if _, err := os.Stat(binaryPath); err == nil {
 		return binaryPath
 	}
-	
+
 	t.Logf("Building binary to %s", binaryPath)
-	
+
 	// Find the repository root dynamically
 	repoRoot := findRepositoryRoot(t)
-	
+
 	cmd := exec.Command("go", "build", "-o", binaryPath, "./cmd/guardrail")
 	cmd.Dir = repoRoot
-	
+
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("Failed to build binary: %v\nOutput: %s", err, output)
 	}
-	
+
 	// Clean up binary after all tests
 	t.Cleanup(func() {
 		os.Remove(binaryPath)
 	})
-	
+
 	return binaryPath
 }
 
@@ -515,19 +515,19 @@ func getProjectRoot(t *testing.T) string {
 // findRepositoryRoot walks up the directory tree looking for go.mod file
 func findRepositoryRoot(t *testing.T) string {
 	t.Helper()
-	
+
 	dir, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("Failed to get working directory: %v", err)
 	}
-	
+
 	// Walk up the directory tree until we find go.mod
 	for {
 		goModPath := filepath.Join(dir, "go.mod")
 		if _, err := os.Stat(goModPath); err == nil {
 			return dir
 		}
-		
+
 		parent := filepath.Dir(dir)
 		if parent == dir {
 			// Reached root of filesystem without finding go.mod
