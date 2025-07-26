@@ -27,12 +27,13 @@ jobs:
         with:
           path: ~/.cache/goreleaser
           key: goreleaser-${{ runner.os }}-${{ hashFiles('.goreleaser.yml') }}
-      - name: Install GoReleaser
-        run: |
-          curl -sfL \
-            "https://github.com/goreleaser/goreleaser/releases/latest/download/goreleaser_$(uname -s)_$(uname -m).tar.gz" \
-            | tar -xz -C ~/.local/bin goreleaser
-      - run: goreleaser release --clean
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6.2.1
+        with:
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   docker-build:
     needs: release-binaries
