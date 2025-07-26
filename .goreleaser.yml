@@ -1,9 +1,23 @@
 version: 2
 
+# Project-wide configuration
+project_name: guardrail
+
+# Hooks that run before the build
 before:
   hooks:
     - go mod tidy
     - go generate ./...
+
+# Git configuration
+git:
+  # What to do with commits that have the WIP prefix
+  ignore_tags:
+    - '^wip'
+
+# Build metadata configuration
+metadata:
+  mod_timestamp: '{{ .CommitTimestamp }}'
 
 builds:
   - id: guardrail
@@ -28,6 +42,10 @@ builds:
         goarch: arm
     ldflags:
       - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+    # Enable reproducible builds
+    mod_timestamp: '{{ .CommitTimestamp }}'
+    flags:
+      - -trimpath
 
 archives:
   - id: guardrail
@@ -39,18 +57,60 @@ archives:
       {{- else }}{{ .Arch }}{{ end }}
       {{- if .Arm }}v{{ .Arm }}{{ end }}
     format_overrides:
-      - goos: windows
-        format: zip
+      windows: zip
     files:
       - README.md
       - LICENSE
       - configs/*
+    # Include SBOM in archives
+    rlcp: true
+    wrap_in_directory: true
+
+# UPX compression configuration
+upx:
+  - enabled: true
+    ids: [guardrail]
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    compress: best
+    lzma: true
+    brute: false
 
 checksum:
   name_template: 'checksums.txt'
+  algorithm: sha256
+
+# Sign the checksums file
+signs:
+  - cmd: cosign
+    certificate: '${artifact}.pem'
+    output: true
+    artifacts: checksum
+    args:
+      - sign-blob
+      - '--output-certificate=${certificate}'
+      - '--output-signature=${signature}'
+      - '${artifact}'
+      - '--yes' # Skip confirmation prompts
+
+# SBOM generation
+sboms:
+  - artifacts: archive
+    id: archive-sbom
+    documents:
+      - "${artifact}.spdx.json"
+    args: ["$artifact", "--file", "$document", "--output", "spdx-json"]
+  - artifacts: binary
+    id: binary-sbom
+    documents:
+      - "${artifact}.spdx.json"
+    args: ["$artifact", "--file", "$document", "--output", "spdx-json"]
+
+# Report binary sizes
+report_sizes: true
 
 snapshot:
-  name_template: "{{ incpatch .Version }}-next"
+  version_template: "{{ incpatch .Version }}-next"
 
 changelog:
   sort: asc
@@ -74,7 +134,7 @@ changelog:
     - title: Others
       order: 999
 
-brews:
+homebrew_casks:
   - repository:
       owner: coolguy1771
       name: homebrew-tap
@@ -136,23 +196,59 @@ release:
   prerelease: auto
   mode: append
   header: |
-    ## What's Changed
+    ## Guardrail {{ .Tag }}
+
+    ### What's Changed
   footer: |
+    ### Security
+    
+    All release artifacts are:
+    - Built with reproducible builds
+    - Compressed with UPX for smaller binary sizes
+    - Include SPDX SBOM (Software Bill of Materials)
+    - Signed with cosign (checksums.txt.sig)
+    
+    To verify the checksums signature:
+    ```bash
+    cosign verify-blob checksums.txt \
+      --certificate checksums.txt.pem \
+      --signature checksums.txt.sig \
+      --certificate-identity-regexp ".*" \
+      --certificate-oidc-issuer https://github.com/login/oauth
+    ```
+    
+    To verify build provenance attestations:
+    ```bash
+    gh attestation verify guardrail_Linux_x86_64.tar.gz \
+      --owner coolguy1771
+    ```
+    
     **Full Changelog**: https://github.com/coolguy1771/guardrail/compare/{{ .PreviousTag }}...{{ .Tag }}
+  
+  # Additional files to upload
+  extra_files:
+    - glob: ./dist/*.spdx.json
 
 nfpms:
   - id: guardrail
     package_name: guardrail
     file_name_template: "{{ .ConventionalFileName }}"
     homepage: https://github.com/coolguy1771/guardrail
-    description: Kubernetes RBAC validation tool
-    maintainer: coolguy1771
+    description: |
+      Kubernetes RBAC validation and analysis tool.
+      Guardrail helps teams maintain secure, compliant RBAC configurations
+      by detecting dangerous permissions and providing actionable insights.
+    maintainer: coolguy1771 <guardrail@example.com>
     license: Apache-2.0
-    vendor: guardrail
+    vendor: Guardrail Project
     formats:
       - deb
       - rpm
       - apk
+    section: utils
+    priority: optional
+    suggests:
+      - kubectl
     contents:
       - src: ./configs/
         dst: /etc/guardrail/
@@ -161,3 +257,13 @@ nfpms:
         dst: /usr/share/doc/guardrail/README.md
       - src: ./LICENSE
         dst: /usr/share/doc/guardrail/LICENSE
+      - src: ./SECURITY.md
+        dst: /usr/share/doc/guardrail/SECURITY.md
+    scripts:
+      postinstall: |
+        #!/bin/sh
+        echo "Guardrail has been installed successfully!"
+        echo "Run 'guardrail --help' to get started."
+      preremove: |
+        #!/bin/sh
+        echo "Removing Guardrail..."

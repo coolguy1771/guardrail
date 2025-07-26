@@ -8,6 +8,8 @@ concurrency:
 permissions:
   contents: write
   packages: write
+  id-token: write
+  attestations: write
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
@@ -23,6 +25,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version: "1.24"
+      - name: Install cosign
+        uses: sigstore/cosign-installer@dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da # v3.7.0
+      - name: Install syft for SBOM generation
+        uses: anchore/sbom-action/download-syft@v0
+      - name: Install UPX
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y upx
       - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: ~/.cache/goreleaser
@@ -34,12 +49,18 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Generate build provenance attestations
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ./dist/checksums.txt
 
   docker-build:
     needs: release-binaries
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with:
           go-version: "1.24"
@@ -86,6 +107,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0
       - id: changelog
         uses: mikepenz/release-changelog-builder-action@c9dc8369bccbc41e0ac887f8fd674f5925d315f7 # v5.4.1
         with:
