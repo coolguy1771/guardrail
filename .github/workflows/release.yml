@@ -62,18 +62,3 @@ jobs:
         with:
           subject-path: ./dist/checksums.txt
 
-  create-release-notes:
-    needs: release-binaries
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4.2.2
-        with:
-          fetch-depth: 0
-      - id: changelog
-        uses: mikepenz/release-changelog-builder-action@c9dc8369bccbc41e0ac887f8fd674f5925d315f7 # v5.4.1
-        with:
-          configuration: .github/changelog-config.json
-      - uses: softprops/action-gh-release@72f2c25fcb47643c292f7107632f7a47c1df5cd8 # v2.3.2
-        with:
-          tag_name: ${{ github.ref }}
-          body: ${{ steps.changelog.outputs.changelog }}
