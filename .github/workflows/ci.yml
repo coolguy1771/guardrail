@@ -113,7 +113,7 @@ jobs:
           fail_ci_if_error: false
 
       - name: Generate coverage badge
-        uses: 5monkeys/cobertura-action@v2
+        uses: 5monkeys/cobertura-action@273e3f1a614fe79ac0e3aeb7f31a8be38ea3415f # v10
         with:
           path: coverage.out
           minimum_coverage: 70
@@ -124,7 +124,7 @@ jobs:
 
       - name: Comment coverage on PR
         if: github.event_name == 'pull_request'
-        uses: 5monkeys/cobertura-action@v2
+        uses: 5monkeys/cobertura-action@273e3f1a614fe79ac0e3aeb7f31a8be38ea3415f # v10
         with:
           path: coverage.out
           minimum_coverage: 70
