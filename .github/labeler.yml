@@ -1,6 +1,5 @@
----
-# Configuration for GitHub Labeler Action
-# https://github.com/actions/labeler
+# Configuration for labeler action
+# This file defines which labels to apply to PRs based on changed files
 
 # Documentation changes
 documentation:
@@ -8,10 +7,9 @@ documentation:
       - any-glob-to-any-file:
           - "**/*.md"
           - "docs/**"
-          - "examples/**"
-          - "LICENSE"
+          - ".github/*.md"
 
-# Go source code changes
+# Go code changes
 go:
   - changed-files:
       - any-glob-to-any-file:
@@ -19,53 +17,8 @@ go:
           - "go.mod"
           - "go.sum"
 
-# CLI/Command changes
-cli:
-  - changed-files:
-      - any-glob-to-any-file:
-          - "cmd/**/*.go"
-
-# Core package changes
-core:
-  - changed-files:
-      - any-glob-to-any-file:
-          - "pkg/**/*.go"
-
-# Analyzer feature
-analyzer:
-  - changed-files:
-      - any-glob-to-any-file:
-          - "pkg/analyzer/**"
-          - "cmd/guardrail/analyze.go"
-          - "RBAC_ANALYSIS.md"
-
-# Validator feature
-validator:
-  - changed-files:
-      - any-glob-to-any-file:
-          - "pkg/validator/**"
-          - "cmd/guardrail/validate.go"
-
-# Kubernetes integration
-kubernetes:
-  - changed-files:
-      - any-glob-to-any-file:
-          - "pkg/kubernetes/**"
-
-# Parser changes
-parser:
-  - changed-files:
-      - any-glob-to-any-file:
-          - "pkg/parser/**"
-
-# Reporter/Output changes
-reporter:
-  - changed-files:
-      - any-glob-to-any-file:
-          - "pkg/reporter/**"
-
 # Test changes
-test:
+tests:
   - changed-files:
       - any-glob-to-any-file:
           - "**/*_test.go"
@@ -76,42 +29,15 @@ ci:
   - changed-files:
       - any-glob-to-any-file:
           - ".github/workflows/**"
-          - ".github/actions/**"
-          - ".golangci.yml"
           - ".goreleaser.yml"
-          - "Makefile"
-
-# Docker changes
-docker:
-  - changed-files:
-      - any-glob-to-any-file:
           - "Dockerfile*"
-          - ".dockerignore"
-          - "docker-compose*.yml"
-
-# Dependencies
-dependencies:
-  - changed-files:
-      - any-glob-to-any-file:
-          - "go.mod"
-          - "go.sum"
-          - "renovate.json"
-
-# Renovate specific
-renovate:
-  - changed-files:
-      - any-glob-to-any-file:
-          - "renovate.json"
-          - ".github/renovate.json5"
+          - "Makefile"
 
 # Configuration changes
 config:
   - changed-files:
       - any-glob-to-any-file:
           - "configs/**"
-          - ".golangci.yml"
-          - ".gitignore"
-          - ".goreleaser.yml"
           - "**/*.yaml"
           - "**/*.yml"
 
@@ -121,29 +47,26 @@ security:
       - any-glob-to-any-file:
           - "pkg/validator/**"
           - "pkg/analyzer/**"
-          - ".github/workflows/security.yml"
-          - ".github/workflows/codeql-*.yml"
-          - "**/security*.go"
+          - "SECURITY.md"
 
-# GitHub specific changes
-github:
+# CLI changes
+cli:
   - changed-files:
       - any-glob-to-any-file:
-          - ".github/**"
+          - "cmd/**"
+          - "pkg/cli/**"
 
-# Build/Release changes
-build:
+# Kubernetes-related changes
+kubernetes:
   - changed-files:
       - any-glob-to-any-file:
-          - "Makefile"
-          - ".goreleaser.yml"
-          - "scripts/**"
-          - ".github/workflows/release.yml"
+          - "pkg/kubernetes/**"
+          - "pkg/parser/**"
 
-# Root repository files
-repo:
+# Dependencies
+dependencies:
   - changed-files:
       - any-glob-to-any-file:
-          - ".gitignore"
-          - "LICENSE"
-          - "README.md"
+          - "go.mod"
+          - "go.sum"
+          - ".github/dependabot.yml"
