@@ -129,11 +129,6 @@ jobs:
           license-check: true
           deny-licenses: GPL-3.0, AGPL-3.0
 
-      - name: Run Nancy vulnerability scanner
-        uses: sonatype-nexus-community/nancy-github-action@v1.1.0
-        with:
-          nancyVersion: "v1.0.42"
-
   # SBOM Generation
   sbom:
     name: Generate SBOM

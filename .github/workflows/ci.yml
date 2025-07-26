@@ -85,7 +85,7 @@ jobs:
           args: "-fmt sarif -out gosec-results.sarif ./..."
 
       - name: Upload SARIF file
-        uses: github/codeql-action/upload-sarif@v3.27.10
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: gosec-results.sarif
 
@@ -97,15 +97,15 @@ jobs:
 
       # Run CodeQL
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3.27.10
+        uses: github/codeql-action/init@v3
         with:
           languages: go
 
       - name: Autobuild
-        uses: github/codeql-action/autobuild@v3.27.10
+        uses: github/codeql-action/autobuild@v3
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3.27.10
+        uses: github/codeql-action/analyze@v3
         with:
           category: "/language:go"
 
