@@ -223,10 +223,6 @@ release:
     ```
     
     **Full Changelog**: https://github.com/coolguy1771/guardrail/compare/{{ .PreviousTag }}...{{ .Tag }}
-  
-  # Additional files to upload
-  extra_files:
-    - glob: ./dist/*.spdx.json
 
 nfpms:
   - id: guardrail

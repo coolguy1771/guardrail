@@ -126,10 +126,22 @@ jobs:
           name: codecov-umbrella
           fail_ci_if_error: false
 
+      - name: Setup Go
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version: "1.24"
+          cache: true
+
+      - name: Install gocover-cobertura
+        run: go install github.com/boumenot/gocover-cobertura@latest
+
+      - name: Convert coverage to Cobertura format
+        run: gocover-cobertura < coverage.out > coverage.xml
+
       - name: Generate coverage badge
         uses: 5monkeys/cobertura-action@ee5787cc56634acddedc51f21c7947985531e6eb # v14
         with:
-          path: coverage.out
+          path: coverage.xml
           minimum_coverage: 70
           fail_below_threshold: false
           show_line: true
@@ -140,7 +152,7 @@ jobs:
         if: github.event_name == 'pull_request'
         uses: 5monkeys/cobertura-action@ee5787cc56634acddedc51f21c7947985531e6eb # v14
         with:
-          path: coverage.out
+          path: coverage.xml
           minimum_coverage: 70
           fail_below_threshold: false
           show_line: true

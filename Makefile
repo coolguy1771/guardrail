@@ -17,8 +17,10 @@ build:
 build-cross:
 	@echo "Building for multiple platforms..."
 	@mkdir -p build
-	@for platform in $(PLATFORMS); do \
-		IFS='/' read -r os arch <<< "$$platform"; \
+	@platforms="$$(echo $(PLATFORMS) | tr ',' ' ')"; \
+	for platform in $$platforms; do \
+		os=$$(echo $$platform | cut -d'/' -f1); \
+		arch=$$(echo $$platform | cut -d'/' -f2); \
 		ext=""; \
 		[ "$$os" = "windows" ] && ext=".exe"; \
 		echo "Building for $$os/$$arch..."; \
