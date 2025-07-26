@@ -238,7 +238,7 @@ nfpms:
       Kubernetes RBAC validation and analysis tool.
       Guardrail helps teams maintain secure, compliant RBAC configurations
       by detecting dangerous permissions and providing actionable insights.
-    maintainer: coolguy1771 <guardrail@example.com>
+    maintainer: Tyler Witlin <twitlin@witl.xyz>
     license: Apache-2.0
     vendor: Guardrail Project
     formats:
@@ -259,11 +259,3 @@ nfpms:
         dst: /usr/share/doc/guardrail/LICENSE
       - src: ./SECURITY.md
         dst: /usr/share/doc/guardrail/SECURITY.md
-    scripts:
-      postinstall: |
-        #!/bin/sh
-        echo "Guardrail has been installed successfully!"
-        echo "Run 'guardrail --help' to get started."
-      preremove: |
-        #!/bin/sh
-        echo "Removing Guardrail..."
