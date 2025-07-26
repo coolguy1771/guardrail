@@ -57,13 +57,13 @@ archives:
       {{- else }}{{ .Arch }}{{ end }}
       {{- if .Arm }}v{{ .Arm }}{{ end }}
     format_overrides:
-      windows: zip
+      - goos: windows
+        format: zip
     files:
       - README.md
       - LICENSE
       - configs/*
     # Include SBOM in archives
-    rlcp: true
     wrap_in_directory: true
 
 # UPX compression configuration
@@ -134,7 +134,7 @@ changelog:
     - title: Others
       order: 999
 
-homebrew_casks:
+brews:
   - repository:
       owner: coolguy1771
       name: homebrew-tap
