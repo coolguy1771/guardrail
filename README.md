@@ -56,4 +56,4 @@ Contributions are welcome! Please open issues and submit pull requests with any 
 
 ## License
 
-[MIT License](LICENSE)
+[Apache 2.0 License](LICENSE)
