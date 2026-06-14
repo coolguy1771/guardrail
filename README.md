@@ -47,7 +47,7 @@ guardrail dangerous -d ./manifests/
 
 Validates RBAC manifests against the security rule catalog.
 
-```
+```text
 Usage:
   guardrail validate [flags]
 
@@ -74,7 +74,7 @@ Flags:
 
 Analyzes all subjects and explains their effective permissions in plain English.
 
-```
+```text
 Usage:
   guardrail analyze [flags]
 
@@ -94,7 +94,7 @@ Flags:
 
 Shows which subjects can perform a specific verb on a specific resource, with the binding chain that grants the permission.
 
-```
+```text
 Usage:
   guardrail who-can --verb <verb> --resource <resource> [flags]
 
@@ -113,7 +113,7 @@ Examples:
 
 Shows all subjects with HIGH or CRITICAL risk permissions, useful as a quick security sweep.
 
-```
+```text
 Usage:
   guardrail dangerous [flags]
 
@@ -126,7 +126,7 @@ Flags:
 
 Prints version, commit hash, and build date.
 
-```
+```bash
 guardrail version
 guardrail version -o json
 ```
@@ -160,7 +160,7 @@ Severities can be overridden per-rule in `configs/guardrail.yaml`.
 
 ### Text (default)
 
-```
+```text
 Found 2 issue(s)
 
 [CRIT]   CRITICAL (1)
@@ -260,7 +260,7 @@ repos:
 
 ## Project structure
 
-```
+```text
 cmd/guardrail/     CLI entry point and command implementations
 pkg/analyzer/      RBAC permission analysis and risk scoring
 pkg/kubernetes/    Live cluster client

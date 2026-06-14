@@ -35,7 +35,8 @@ maintain secure, compliant, and well-structured RBAC configurations.`,
 	SilenceErrors: true,
 	PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 		noColor, _ := cmd.Root().PersistentFlags().GetBool("no-color")
-		if noColor || os.Getenv("NO_COLOR") != "" {
+		_, noColorEnv := os.LookupEnv("NO_COLOR")
+		if noColor || noColorEnv {
 			reporter.UseColor = false
 		}
 		return nil
@@ -46,7 +47,7 @@ maintain secure, compliant, and well-structured RBAC configurations.`,
 func init() {
 	cobra.OnInitialize(initConfig)
 
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "Config file (default: $HOME/.guardrail.yaml or /etc/guardrail/guardrail.yaml)")
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "Config file (default: $HOME/guardrail.yaml or /etc/guardrail/guardrail.yaml)")
 	rootCmd.PersistentFlags().StringP("output", "o", "text", "Output format: text, json, sarif")
 	rootCmd.PersistentFlags().Bool("no-color", false, "Disable colors and emoji in output (also: NO_COLOR env var)")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Print diagnostic messages (parsed files, skipped docs, config path)")

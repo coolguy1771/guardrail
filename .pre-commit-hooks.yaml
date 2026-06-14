@@ -16,7 +16,7 @@
   description: Validate Kubernetes RBAC manifests for security issues
   language: golang
   entry: guardrail validate
-  args: ["--fail-on", "high"]
+  args: ["--dir", ".", "--fail-on", "high"]
   types: [yaml]
   pass_filenames: false   # guardrail uses --dir / --file, not positional args
   additional_dependencies: []
@@ -26,7 +26,7 @@
   description: Validate Kubernetes RBAC manifests; fail on any finding including MEDIUM
   language: golang
   entry: guardrail validate
-  args: ["--fail-on", "medium"]
+  args: ["--dir", ".", "--fail-on", "medium"]
   types: [yaml]
   pass_filenames: false
   additional_dependencies: []

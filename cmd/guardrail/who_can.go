@@ -66,7 +66,7 @@ func init() {
 
 	whoCanCmd.Flags().StringVar(&whoCanVerb, "verb", "", "Kubernetes verb to check (e.g. get, list, create, delete, *)")
 	whoCanCmd.Flags().StringVar(&whoCanResource, "resource", "", "Resource type to check (e.g. pods, secrets, *)")
-	whoCanCmd.Flags().StringVar(&whoCanAPIGroup, "api-group", "", "API group filter (empty = core API, * = all)")
+	whoCanCmd.Flags().StringVar(&whoCanAPIGroup, "api-group", "", "API group filter (omit or empty = all groups, * = all, or specify a group name)")
 	whoCanCmd.Flags().StringVarP(&whoCanFile, "file", "f", "", "RBAC manifest file")
 	whoCanCmd.Flags().StringVarP(&whoCanDirectory, "dir", "d", "", "Directory of RBAC manifests")
 	whoCanCmd.Flags().BoolVarP(&whoCanCluster, "cluster", "c", false, "Analyze live cluster RBAC")

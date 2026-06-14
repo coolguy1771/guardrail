@@ -252,8 +252,8 @@ func TestSARIFReporter_Report(t *testing.T) {
 	testutil.AssertEqual(t, Version, run.Tool.Driver.Version, "tool version")
 	testutil.AssertEqual(t, "https://github.com/coolguy1771/guardrail", run.Tool.Driver.InformationURI, "tool URI")
 
-	// SARIF always includes all 14 catalog rules, not just triggered ones
-	testutil.AssertEqual(t, 14, len(run.Tool.Driver.Rules), "unique rules count")
+	// SARIF always includes all catalog rules, not just triggered ones
+	testutil.AssertEqual(t, len(validator.Catalog), len(run.Tool.Driver.Rules), "unique rules count")
 
 	// Check results
 	testutil.AssertEqual(t, 5, len(run.Results), "results count")

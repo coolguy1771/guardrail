@@ -193,7 +193,7 @@ type SARIFRule struct {
 	Name                 string                  `json:"name"`
 	ShortDescription     SARIFMultiformatString  `json:"shortDescription"`
 	FullDescription      SARIFMultiformatString  `json:"fullDescription"`
-	HelpUri              string                  `json:"helpUri,omitempty"`
+	HelpURI              string                  `json:"helpUri,omitempty"`
 	Help                 *SARIFMultiformatString `json:"help,omitempty"`
 	DefaultConfiguration SARIFConfiguration      `json:"defaultConfiguration"`
 	Properties           *SARIFRuleProperties    `json:"properties,omitempty"`
@@ -246,7 +246,7 @@ func buildSARIFRules() []SARIFRule {
 			Name:             meta.Name,
 			ShortDescription: SARIFMultiformatString{Text: meta.Name},
 			FullDescription:  SARIFMultiformatString{Text: meta.Description},
-			HelpUri:          fmt.Sprintf("https://github.com/coolguy1771/guardrail#%s", strings.ToLower(meta.ID)),
+			HelpURI:          "https://github.com/coolguy1771/guardrail#rule-catalog",
 			Help:             &SARIFMultiformatString{Text: helpText},
 			DefaultConfiguration: SARIFConfiguration{
 				Level: severityToSARIFLevel(meta.DefaultSeverity),
