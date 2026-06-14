@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"sort"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -18,6 +17,28 @@ const (
 	tabwriterPadding = 2
 	separatorLength  = 80
 )
+
+// Version is the tool version embedded in SARIF output. Set by main via ldflags.
+//
+//nolint:gochecknoglobals // Set by main at startup from build-time ldflags
+var Version = "dev"
+
+// UseColor controls whether emoji and ANSI escape codes appear in text output.
+// Initialised at startup via TTY detection; override with --no-color or NO_COLOR.
+//
+//nolint:gochecknoglobals // Package-level state intentionally shared across output paths
+var UseColor = defaultUseColor()
+
+func defaultUseColor() bool {
+	if os.Getenv("NO_COLOR") != "" {
+		return false
+	}
+	fi, err := os.Stdout.Stat()
+	if err != nil {
+		return false
+	}
+	return (fi.Mode() & os.ModeCharDevice) != 0
+}
 
 // Reporter handles output formatting for validation findings.
 type Reporter interface {
@@ -53,7 +74,11 @@ type TextReporter struct{}
 // Report outputs findings in text format.
 func (r *TextReporter) Report(findings []validator.Finding, writer io.Writer) error {
 	if len(findings) == 0 {
-		fmt.Fprintln(writer, "✅ No issues found!")
+		if UseColor {
+			fmt.Fprintln(writer, "✅ No issues found.")
+		} else {
+			fmt.Fprintln(writer, "No issues found.")
+		}
 		return nil
 	}
 
@@ -67,8 +92,9 @@ func (r *TextReporter) Report(findings []validator.Finding, writer io.Writer) er
 	w := tabwriter.NewWriter(writer, 0, 0, tabwriterPadding, ' ', 0)
 	defer w.Flush()
 
-	// Output findings by severity
+	// Output findings by severity (highest first)
 	for _, severity := range []validator.Severity{
+		validator.SeverityCritical,
 		validator.SeverityHigh,
 		validator.SeverityMedium,
 		validator.SeverityLow,
@@ -163,11 +189,18 @@ type SARIFDriver struct {
 }
 
 type SARIFRule struct {
-	ID                   string                 `json:"id"`
-	Name                 string                 `json:"name"`
-	ShortDescription     SARIFMultiformatString `json:"shortDescription"`
-	FullDescription      SARIFMultiformatString `json:"fullDescription"`
-	DefaultConfiguration SARIFConfiguration     `json:"defaultConfiguration"`
+	ID                   string                  `json:"id"`
+	Name                 string                  `json:"name"`
+	ShortDescription     SARIFMultiformatString  `json:"shortDescription"`
+	FullDescription      SARIFMultiformatString  `json:"fullDescription"`
+	HelpUri              string                  `json:"helpUri,omitempty"`
+	Help                 *SARIFMultiformatString `json:"help,omitempty"`
+	DefaultConfiguration SARIFConfiguration      `json:"defaultConfiguration"`
+	Properties           *SARIFRuleProperties    `json:"properties,omitempty"`
+}
+
+type SARIFRuleProperties struct {
+	Tags []string `json:"tags,omitempty"`
 }
 
 type SARIFMultiformatString struct {
@@ -201,36 +234,34 @@ type SARIFArtifactLocation struct {
 	URI string `json:"uri"`
 }
 
+// buildSARIFRules returns SARIF rule descriptors for all catalog entries.
+// Building from the catalog (rather than from findings) means SARIF consumers always
+// see the full set of available checks, even for runs with zero violations.
+func buildSARIFRules() []SARIFRule {
+	rules := make([]SARIFRule, 0, len(validator.Catalog))
+	for _, meta := range validator.Catalog {
+		helpText := meta.Remediation
+		rules = append(rules, SARIFRule{
+			ID:               meta.ID,
+			Name:             meta.Name,
+			ShortDescription: SARIFMultiformatString{Text: meta.Name},
+			FullDescription:  SARIFMultiformatString{Text: meta.Description},
+			HelpUri:          fmt.Sprintf("https://github.com/coolguy1771/guardrail#%s", strings.ToLower(meta.ID)),
+			Help:             &SARIFMultiformatString{Text: helpText},
+			DefaultConfiguration: SARIFConfiguration{
+				Level: severityToSARIFLevel(meta.DefaultSeverity),
+			},
+			Properties: &SARIFRuleProperties{Tags: []string{"kubernetes", "rbac", "security"}},
+		})
+	}
+	return rules
+}
+
 // Report outputs findings in SARIF format.
 func (r *SARIFReporter) Report(findings []validator.Finding, writer io.Writer) error {
-	// Build rules from findings
-	rulesMap := make(map[string]SARIFRule)
-	for _, finding := range findings {
-		if _, exists := rulesMap[finding.RuleID]; !exists {
-			rulesMap[finding.RuleID] = SARIFRule{
-				ID:   finding.RuleID,
-				Name: finding.RuleName,
-				ShortDescription: SARIFMultiformatString{
-					Text: finding.RuleName,
-				},
-				FullDescription: SARIFMultiformatString{
-					Text: finding.RuleName,
-				},
-				DefaultConfiguration: SARIFConfiguration{
-					Level: severityToSARIFLevel(finding.Severity),
-				},
-			}
-		}
-	}
-
-	// Convert map to slice
-	var rules []SARIFRule
-	for _, rule := range rulesMap {
-		rules = append(rules, rule)
-	}
-	sort.Slice(rules, func(i, j int) bool {
-		return rules[i].ID < rules[j].ID
-	})
+	// Build rule list from the full catalog so SARIF consumers know all available checks,
+	// not just the ones that produced findings in this run.
+	rules := buildSARIFRules()
 
 	// Build results
 	var results []SARIFResult
@@ -266,7 +297,7 @@ func (r *SARIFReporter) Report(findings []validator.Finding, writer io.Writer) e
 				Tool: SARIFTool{
 					Driver: SARIFDriver{
 						Name:           "guardrail",
-						Version:        "1.0.0",
+						Version:        Version,
 						InformationURI: "https://github.com/coolguy1771/guardrail",
 						Rules:          rules,
 					},
@@ -292,29 +323,45 @@ func groupBySeverity(findings []validator.Finding) map[validator.Severity][]vali
 }
 
 func getSeverityIcon(severity validator.Severity) string {
+	if UseColor {
+		switch severity {
+		case validator.SeverityCritical:
+			return "🔴"
+		case validator.SeverityHigh:
+			return "🟠"
+		case validator.SeverityMedium:
+			return "🟡"
+		case validator.SeverityLow:
+			return "🔵"
+		case validator.SeverityInfo:
+			return "ℹ️ "
+		default:
+			return "• "
+		}
+	}
 	switch severity {
+	case validator.SeverityCritical:
+		return "[CRIT]  "
 	case validator.SeverityHigh:
-		return "🔴"
+		return "[HIGH]  "
 	case validator.SeverityMedium:
-		return "🟡"
+		return "[MED]   "
 	case validator.SeverityLow:
-		return "🔵"
+		return "[LOW]   "
 	case validator.SeverityInfo:
-		return "ℹ️"
+		return "[INFO]  "
 	default:
-		return "•"
+		return "[?]     "
 	}
 }
 
 func severityToSARIFLevel(severity validator.Severity) string {
 	switch severity {
-	case validator.SeverityHigh:
+	case validator.SeverityCritical, validator.SeverityHigh:
 		return "error"
 	case validator.SeverityMedium:
 		return "warning"
-	case validator.SeverityLow:
-		return "note"
-	case validator.SeverityInfo:
+	case validator.SeverityLow, validator.SeverityInfo:
 		return "note"
 	default:
 		return "none"

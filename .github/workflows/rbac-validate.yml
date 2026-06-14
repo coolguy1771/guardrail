@@ -1,0 +1,53 @@
+---
+# Example workflow: copy this to your own repository to scan RBAC manifests on every PR.
+#
+# SECURITY NOTES:
+#   - This workflow only reads RBAC manifests from the repository checkout.
+#   - No user-supplied GitHub context values are interpolated into shell commands.
+#   - The SARIF upload step requires the `security-events: write` permission.
+name: RBAC Validate
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - '**.yaml'
+      - '**.yml'
+  pull_request:
+    paths:
+      - '**.yaml'
+      - '**.yml'
+
+permissions:
+  contents: read
+  security-events: write   # required for uploading SARIF results
+
+jobs:
+  rbac-validate:
+    name: Validate RBAC manifests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Install guardrail
+        run: go install github.com/coolguy1771/guardrail/cmd/guardrail@latest
+
+      - name: Validate RBAC manifests (text output)
+        run: guardrail validate --dir . --fail-on high
+        continue-on-error: true  # let SARIF upload proceed even on failure
+
+      - name: Generate SARIF report
+        run: guardrail validate --dir . --fail-on none --output sarif > guardrail.sarif
+
+      - name: Upload SARIF to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: guardrail.sarif
+          category: guardrail-rbac

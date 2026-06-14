@@ -17,6 +17,7 @@ import (
 	"github.com/coolguy1771/guardrail/pkg/analyzer"
 	"github.com/coolguy1771/guardrail/pkg/kubernetes"
 	"github.com/coolguy1771/guardrail/pkg/parser"
+	"github.com/coolguy1771/guardrail/pkg/reporter"
 )
 
 const outputSeparatorLength = 80
@@ -31,7 +32,6 @@ var (
 	subject          string
 	showRoles        bool
 	riskLevel        string
-	noColor          bool
 )
 
 //nolint:gochecknoglobals // Cobra commands must be global
@@ -39,27 +39,23 @@ var analyzeCmd = &cobra.Command{
 	Use:   "analyze",
 	Short: "Analyze RBAC permissions and explain what subjects can do",
 	Long: `Analyze RoleBindings and ClusterRoleBindings to understand what permissions
-are granted to users, service accounts, and groups. Provides plain English
+are granted to users, service accounts, and groups. Provides plain-English
 explanations of what each permission allows.`,
 	RunE: runAnalyze,
 }
 
-// init registers the 'analyze' CLI command and its flags, and binds them to Viper configuration keys for RBAC permission analysis.
-//
 //nolint:gochecknoinits // Cobra requires init for command registration
 func init() {
 	rootCmd.AddCommand(analyzeCmd)
 
-	analyzeCmd.Flags().StringVarP(&analyzeFile, "file", "f", "", "Path to a single RBAC manifest file")
-	analyzeCmd.Flags().StringVarP(&analyzeDirectory, "dir", "d", "", "Path to a directory containing RBAC manifests")
+	analyzeCmd.Flags().StringVarP(&analyzeFile, "file", "f", "", "RBAC manifest file to analyze")
+	analyzeCmd.Flags().StringVarP(&analyzeDirectory, "dir", "d", "", "Directory of RBAC manifests to analyze")
 	analyzeCmd.Flags().BoolVarP(&analyzeCluster, "cluster", "c", false, "Analyze live cluster RBAC")
 	analyzeCmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to kubeconfig file")
 	analyzeCmd.Flags().StringVar(&kubectx, "context", "", "Kubernetes context to use")
-	analyzeCmd.Flags().
-		StringVarP(&subject, "subject", "s", "", "Filter by subject name (user, group, or service account)")
-	analyzeCmd.Flags().BoolVar(&showRoles, "show-roles", false, "Show detailed role information")
-	analyzeCmd.Flags().StringVar(&riskLevel, "risk-level", "", "Filter by risk level (low, medium, high, critical)")
-	analyzeCmd.Flags().BoolVar(&noColor, "no-color", false, "Disable colored output")
+	analyzeCmd.Flags().StringVarP(&subject, "subject", "s", "", "Filter by subject name")
+	analyzeCmd.Flags().BoolVar(&showRoles, "show-roles", false, "Show detailed per-rule breakdown")
+	analyzeCmd.Flags().StringVar(&riskLevel, "risk-level", "", "Filter by risk level: low, medium, high, critical (case-insensitive)")
 
 	_ = viper.BindPFlag("analyze.file", analyzeCmd.Flags().Lookup("file"))
 	_ = viper.BindPFlag("analyze.directory", analyzeCmd.Flags().Lookup("dir"))
@@ -69,12 +65,8 @@ func init() {
 	_ = viper.BindPFlag("analyze.subject", analyzeCmd.Flags().Lookup("subject"))
 	_ = viper.BindPFlag("analyze.show-roles", analyzeCmd.Flags().Lookup("show-roles"))
 	_ = viper.BindPFlag("analyze.risk-level", analyzeCmd.Flags().Lookup("risk-level"))
-	_ = viper.BindPFlag("analyze.no-color", analyzeCmd.Flags().Lookup("no-color"))
 }
 
-// runAnalyze executes the RBAC analysis command, processing input from a file, directory, or live Kubernetes cluster, and outputs permission analysis results in the specified format.
-// It validates input options, initializes the analyzer, performs permission analysis, applies subject and risk level filters, and outputs results as JSON or human-readable text.
-// Returns an error if input validation, parsing, analysis, or output fails.
 func runAnalyze(cmd *cobra.Command, _ []string) error {
 	fileArg := viper.GetString("analyze.file")
 	directoryArg := viper.GetString("analyze.directory")
@@ -86,7 +78,7 @@ func runAnalyze(cmd *cobra.Command, _ []string) error {
 	riskLevelArg := viper.GetString("analyze.risk-level")
 	outputFormat := viper.GetString("output")
 
-	// Validate input options
+	// Count input sources — exactly one required.
 	inputCount := 0
 	if fileArg != "" {
 		inputCount++
@@ -99,67 +91,57 @@ func runAnalyze(cmd *cobra.Command, _ []string) error {
 	}
 
 	if inputCount == 0 {
-		return errors.New("must specify one of --file, --dir, or --cluster")
+		_ = cmd.Usage()
+		return errors.New("specify one of --file, --dir, or --cluster")
 	}
 	if inputCount > 1 {
-		return errors.New("cannot specify multiple input sources")
+		_ = cmd.Usage()
+		return errors.New("--file, --dir, and --cluster are mutually exclusive")
 	}
 
 	var a *analyzer.Analyzer
 	var err error
 
 	if clusterArg {
-		// Analyze live cluster
 		a, err = createClusterAnalyzer(kubeconfigArg, kubectxArg)
 		if err != nil {
 			return err
 		}
 	} else {
-		// Analyze files
 		a, err = createFileAnalyzer(fileArg, directoryArg)
 		if err != nil {
 			return err
 		}
 	}
 
-	// Analyze permissions
-	ctx := context.Background()
-	// Note: The kubectx flag value is already passed to kubernetes.NewClient() above,
-	// which handles context switching internally. This block is kept for potential
-	// future use where we might need to pass context-specific options.
-
-	permissions, err := a.AnalyzePermissions(ctx)
+	permissions, err := a.AnalyzePermissions(context.Background())
 	if err != nil {
-		return fmt.Errorf("failed to analyze permissions: %w", err)
+		return fmt.Errorf("analysis failed: %w", err)
 	}
 
-	// Apply filters
 	permissions = filterPermissions(permissions, subjectArg, riskLevelArg)
 
-	// Output results
-	var writer io.Writer = os.Stdout
+	var w io.Writer = os.Stdout
 	if cmd != nil {
-		writer = cmd.OutOrStdout()
+		w = cmd.OutOrStdout()
 	}
 
 	switch outputFormat {
 	case "json":
-		return outputJSON(permissions, writer)
+		return outputJSON(permissions, w)
 	default:
-		return outputHumanReadable(permissions, showRolesArg, writer)
+		return outputHumanReadable(permissions, showRolesArg, w)
 	}
 }
 
-// createClusterAnalyzer creates an analyzer for live cluster analysis.
 func createClusterAnalyzer(kubeconfigArg, kubectxArg string) (*analyzer.Analyzer, error) {
 	client, err := kubernetes.NewClient(kubeconfigArg, kubectxArg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create kubernetes client: %w", err)
+		return nil, fmt.Errorf("cannot connect to cluster: %w", err)
 	}
 	return analyzer.NewAnalyzer(client.GetRBACReader()), nil
 }
 
-// createFileAnalyzer creates an analyzer for file-based analysis.
 func createFileAnalyzer(fileArg, directoryArg string) (*analyzer.Analyzer, error) {
 	var objects []runtime.Object
 	var err error
@@ -167,41 +149,39 @@ func createFileAnalyzer(fileArg, directoryArg string) (*analyzer.Analyzer, error
 	if fileArg != "" {
 		objects, err = parseFile(fileArg)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse file: %w", err)
+			return nil, fmt.Errorf("cannot parse %q: %w", fileArg, err)
 		}
 	} else {
 		objects, err = parseDirectory(directoryArg)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse directory: %w", err)
+			return nil, fmt.Errorf("cannot read directory %q: %w", directoryArg, err)
 		}
 	}
 
 	return analyzer.NewAnalyzerFromObjects(objects), nil
 }
 
-// parseFile parses a Kubernetes YAML manifest file and returns the contained runtime objects.
-// Returns an error if the file cannot be parsed.
 func parseFile(filename string) ([]runtime.Object, error) {
 	p := parser.New()
 	return p.ParseFile(filename)
 }
 
-// parseDirectory walks through the specified directory, parses all YAML files into Kubernetes runtime objects, and returns the aggregated objects.
-// Files that fail to parse are skipped with a warning; the function continues processing remaining files.
 func parseDirectory(directory string) ([]runtime.Object, error) {
 	var allObjects []runtime.Object
 	p := parser.New()
 	failedParses := 0
+	isVerbose := viper.GetBool("verbose")
 
 	err := filepath.Walk(directory, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 		if !info.IsDir() && (filepath.Ext(path) == ".yaml" || filepath.Ext(path) == ".yml") {
-			var objects []runtime.Object
-			objects, err = p.ParseFile(path)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: Failed to parse %s: %v\n", path, err)
+			objects, parseErr := p.ParseFile(path)
+			if parseErr != nil {
+				if isVerbose {
+					fmt.Fprintf(os.Stderr, "warning: skipping %q: %v\n", path, parseErr)
+				}
 				failedParses++
 				return nil
 			}
@@ -210,44 +190,37 @@ func parseDirectory(directory string) ([]runtime.Object, error) {
 		return nil
 	})
 
-	if failedParses > 0 {
-		fmt.Fprintf(os.Stderr, "\n%d file(s) failed to parse in directory '%s'.\n", failedParses, directory)
+	if failedParses > 0 && !isVerbose {
+		fmt.Fprintf(os.Stderr, "warning: %d file(s) could not be parsed (run with --verbose for details)\n", failedParses)
 	}
 
 	return allObjects, err
 }
 
-// filterPermissions returns a filtered slice of SubjectPermissions based on the specified subject name and risk level.
-// Only permissions matching both filters (if provided) are included in the result.
+// filterPermissions filters by subject name (exact) and risk level (case-insensitive).
 func filterPermissions(
 	permissions []analyzer.SubjectPermissions,
 	subjectFilter, riskFilter string,
 ) []analyzer.SubjectPermissions {
-	var filtered []analyzer.SubjectPermissions
-
-	for _, perm := range permissions {
-		// Apply subject filter
-		if subjectFilter != "" {
-			if perm.Subject.Name != subjectFilter {
-				continue
-			}
-		}
-
-		// Apply risk level filter
-		if riskFilter != "" {
-			if string(perm.RiskLevel) != riskFilter {
-				continue
-			}
-		}
-
-		filtered = append(filtered, perm)
+	if subjectFilter == "" && riskFilter == "" {
+		return permissions
 	}
 
+	riskFilterNorm := strings.ToLower(riskFilter)
+
+	var filtered []analyzer.SubjectPermissions
+	for _, perm := range permissions {
+		if subjectFilter != "" && perm.Subject.Name != subjectFilter {
+			continue
+		}
+		if riskFilterNorm != "" && strings.ToLower(string(perm.RiskLevel)) != riskFilterNorm {
+			continue
+		}
+		filtered = append(filtered, perm)
+	}
 	return filtered
 }
 
-// outputJSON writes the analyzed subject permissions and a summary to stdout in indented JSON format.
-// Returns an error if encoding or writing fails.
 func outputJSON(permissions []analyzer.SubjectPermissions, w io.Writer) error {
 	encoder := json.NewEncoder(w)
 	encoder.SetIndent("", "  ")
@@ -257,48 +230,48 @@ func outputJSON(permissions []analyzer.SubjectPermissions, w io.Writer) error {
 	})
 }
 
-// outputHumanReadable prints a human-readable summary and detailed analysis of RBAC permissions for each subject, including risk distribution and optional rule details.
-// Returns an error only if output fails.
-//
-
 func outputHumanReadable(permissions []analyzer.SubjectPermissions, showRoles bool, w io.Writer) error {
 	if len(permissions) == 0 {
 		fmt.Fprintln(w, "No RBAC permissions found matching the criteria.")
 		return nil
 	}
 
-	// Print summary
 	summary := getSummary(permissions)
-	fmt.Fprintf(w, "📊 RBAC Analysis Summary\n")
+
+	if reporter.UseColor {
+		fmt.Fprintf(w, "📊 RBAC Analysis Summary\n")
+	} else {
+		fmt.Fprintf(w, "RBAC Analysis Summary\n")
+	}
 	fmt.Fprintf(w, "========================\n")
 	fmt.Fprintf(w, "Total Subjects: %d\n", summary.TotalSubjects)
 	fmt.Fprintf(w, "Risk Distribution:\n")
-	fmt.Fprintf(w, "  🔴 Critical: %d\n", summary.CriticalRisk)
-	fmt.Fprintf(w, "  🟠 High: %d\n", summary.HighRisk)
-	fmt.Fprintf(w, "  🟡 Medium: %d\n", summary.MediumRisk)
-	fmt.Fprintf(w, "  🟢 Low: %d\n", summary.LowRisk)
+
+	if reporter.UseColor {
+		fmt.Fprintf(w, "  🔴 Critical: %d\n", summary.CriticalRisk)
+		fmt.Fprintf(w, "  🟠 High:     %d\n", summary.HighRisk)
+		fmt.Fprintf(w, "  🟡 Medium:   %d\n", summary.MediumRisk)
+		fmt.Fprintf(w, "  🟢 Low:      %d\n", summary.LowRisk)
+	} else {
+		fmt.Fprintf(w, "  [CRIT]   Critical: %d\n", summary.CriticalRisk)
+		fmt.Fprintf(w, "  [HIGH]   High:     %d\n", summary.HighRisk)
+		fmt.Fprintf(w, "  [MED]    Medium:   %d\n", summary.MediumRisk)
+		fmt.Fprintf(w, "  [LOW]    Low:      %d\n", summary.LowRisk)
+	}
 	fmt.Fprintf(w, "\n")
 
-	// Print detailed analysis for each subject
 	for i, subjectPerm := range permissions {
 		if i > 0 {
 			fmt.Fprintf(w, "\n%s\n\n", strings.Repeat("─", outputSeparatorLength))
 		}
-
 		printSubjectAnalysis(subjectPerm, showRoles, w)
 	}
 
 	return nil
 }
 
-// printSubjectAnalysis displays a detailed analysis of a subject's permissions, including risk level, roles, and optionally detailed rule information.
-// It prints the subject's kind, name, namespace, risk level, and a breakdown of each permission with associated roles and bindings.
-// If showRoles is true, detailed permission rules are printed; otherwise, a summary is shown.
-//
-
 func printSubjectAnalysis(subjectPerm analyzer.SubjectPermissions, showRoles bool, w io.Writer) {
-	// Print subject header
-	riskIcon := getRiskIcon(subjectPerm.RiskLevel)
+	riskIcon := getRiskLabel(subjectPerm.RiskLevel)
 	fmt.Fprintf(w, "%s %s: %s\n", riskIcon, subjectPerm.Subject.Kind, subjectPerm.Subject.Name)
 
 	if subjectPerm.Subject.Namespace != "" {
@@ -307,9 +280,12 @@ func printSubjectAnalysis(subjectPerm analyzer.SubjectPermissions, showRoles boo
 	fmt.Fprintf(w, "   Risk Level: %s\n", strings.ToUpper(string(subjectPerm.RiskLevel)))
 	fmt.Fprintf(w, "   Total Permissions: %d\n\n", len(subjectPerm.Permissions))
 
-	// Print permissions
 	for _, perm := range subjectPerm.Permissions {
-		fmt.Fprintf(w, "  📋 %s/%s", perm.RoleKind, perm.RoleName)
+		if reporter.UseColor {
+			fmt.Fprintf(w, "  📋 %s/%s", perm.RoleKind, perm.RoleName)
+		} else {
+			fmt.Fprintf(w, "  [role] %s/%s", perm.RoleKind, perm.RoleName)
+		}
 		if perm.Namespace != "" {
 			fmt.Fprintf(w, " (namespace: %s)", perm.Namespace)
 		}
@@ -318,33 +294,43 @@ func printSubjectAnalysis(subjectPerm analyzer.SubjectPermissions, showRoles boo
 		fmt.Fprintf(w, "     Bound via: %s/%s\n", perm.BindingKind, perm.BindingName)
 
 		if showRoles && len(perm.Rules) > 0 {
-			fmt.Fprintf(w, "\n     🔍 Detailed Permissions:\n")
+			if reporter.UseColor {
+				fmt.Fprintf(w, "\n     🔍 Detailed Permissions:\n")
+			} else {
+				fmt.Fprintf(w, "\n     Detailed Permissions:\n")
+			}
 			for _, rule := range perm.Rules {
 				printRuleAnalysis(rule, "       ", w)
 			}
 		} else if len(perm.Rules) > 0 {
-			fmt.Fprintf(w, "     📝 Summary: %s\n", generatePermissionSummary(perm.Rules))
+			fmt.Fprintf(w, "     Summary: %s\n", generatePermissionSummary(perm.Rules))
 		}
 		fmt.Fprintf(w, "\n")
 	}
 }
-
-// printRuleAnalysis displays a detailed, human-readable analysis of a policy rule, including its description, risk level, concerns, and allowed actions with explanations and examples, using indentation and optional color coding for clarity.
-//
 
 func printRuleAnalysis(rule analyzer.PolicyRuleAnalysis, indent string, w io.Writer) {
 	fmt.Fprintf(w, "%s• %s\n", indent, rule.HumanReadable)
 	fmt.Fprintf(w, "%s  Risk: %s\n", indent, strings.ToUpper(string(rule.SecurityImpact.Level)))
 
 	if len(rule.SecurityImpact.Concerns) > 0 {
-		fmt.Fprintf(w, "%s  ⚠️  Concerns: %s\n", indent, strings.Join(rule.SecurityImpact.Concerns, ", "))
+		if reporter.UseColor {
+			fmt.Fprintf(w, "%s  ⚠️  Concerns: %s\n", indent, strings.Join(rule.SecurityImpact.Concerns, ", "))
+		} else {
+			fmt.Fprintf(w, "%s  Concerns: %s\n", indent, strings.Join(rule.SecurityImpact.Concerns, ", "))
+		}
 	}
 
 	if len(rule.VerbExplanations) > 0 {
-		fmt.Fprintf(w, "%s  🔧 Actions allowed:\n", indent)
+		if reporter.UseColor {
+			fmt.Fprintf(w, "%s  🔧 Actions allowed:\n", indent)
+		} else {
+			fmt.Fprintf(w, "%s  Actions allowed:\n", indent)
+		}
 		for _, verb := range rule.VerbExplanations {
-			riskColor := getColorForRisk(verb.RiskLevel)
-			fmt.Fprintf(w, "%s    - %s%s%s: %s\n", indent, riskColor, verb.Verb, resetColor(), verb.Explanation)
+			color := getColorForRisk(verb.RiskLevel)
+			reset := resetColor()
+			fmt.Fprintf(w, "%s    - %s%s%s: %s\n", indent, color, verb.Verb, reset, verb.Explanation)
 			if verb.Examples != "" {
 				fmt.Fprintf(w, "%s      Example: %s\n", indent, verb.Examples)
 			}
@@ -353,15 +339,12 @@ func printRuleAnalysis(rule analyzer.PolicyRuleAnalysis, indent string, w io.Wri
 	fmt.Fprintf(w, "\n")
 }
 
-// generatePermissionSummary returns a summary string describing the number of permission rules and how many are classified as high-risk or critical.
 func generatePermissionSummary(rules []analyzer.PolicyRuleAnalysis) string {
 	if len(rules) == 0 {
-		return "No permissions"
+		return "no permissions"
 	}
 
-	var summaryParts []string
 	highRiskCount := 0
-
 	for _, rule := range rules {
 		if rule.SecurityImpact.Level == analyzer.RiskLevelHigh ||
 			rule.SecurityImpact.Level == analyzer.RiskLevelCritical {
@@ -369,69 +352,64 @@ func generatePermissionSummary(rules []analyzer.PolicyRuleAnalysis) string {
 		}
 	}
 
-	summaryParts = append(summaryParts, fmt.Sprintf("%d permission rule(s)", len(rules)))
-
+	s := fmt.Sprintf("%d permission rule(s)", len(rules))
 	if highRiskCount > 0 {
-		summaryParts = append(summaryParts, fmt.Sprintf("%d high-risk", highRiskCount))
+		s += fmt.Sprintf(", %d high-risk", highRiskCount)
 	}
-
-	return strings.Join(summaryParts, ", ")
+	return s
 }
 
-// getRiskIcon returns an emoji icon representing the specified risk level.
-func getRiskIcon(level analyzer.RiskLevel) string {
+// getRiskLabel returns an emoji or bracketed label for a risk level.
+func getRiskLabel(level analyzer.RiskLevel) string {
+	if reporter.UseColor {
+		switch level {
+		case analyzer.RiskLevelCritical:
+			return "🔴"
+		case analyzer.RiskLevelHigh:
+			return "🟠"
+		case analyzer.RiskLevelMedium:
+			return "🟡"
+		case analyzer.RiskLevelLow:
+			return "🟢"
+		default:
+			return "⚪"
+		}
+	}
 	switch level {
 	case analyzer.RiskLevelCritical:
-		return "🔴"
+		return "[CRIT]"
 	case analyzer.RiskLevelHigh:
-		return "🟠"
+		return "[HIGH]"
 	case analyzer.RiskLevelMedium:
-		return "🟡"
+		return "[MED] "
 	case analyzer.RiskLevelLow:
-		return "🟢"
+		return "[LOW] "
 	default:
-		return "⚪"
+		return "[?]   "
 	}
 }
 
-// isColorSupported returns true if colored output is enabled and supported by the terminal.
-func isColorSupported() bool {
-	if noColor {
-		return false
-	}
-	if os.Getenv("NO_COLOR") != "" {
-		return false
-	}
-	// Check if stdout is a terminal
-	fi, err := os.Stdout.Stat()
-	if err != nil {
-		return false
-	}
-	return (fi.Mode() & os.ModeCharDevice) != 0
-}
-
-// getColorForRisk returns the ANSI color code string corresponding to the given risk level if color output is supported; otherwise, it returns an empty string.
+// getColorForRisk returns an ANSI escape code for the given risk level when color is enabled.
 func getColorForRisk(riskLevel string) string {
-	if !isColorSupported() {
+	if !reporter.UseColor {
 		return ""
 	}
-	switch riskLevel {
+	switch strings.ToLower(riskLevel) {
 	case "critical":
-		return "\033[91m" // Bright red
+		return "\033[91m"
 	case "high":
-		return "\033[31m" // Red
+		return "\033[31m"
 	case "medium":
-		return "\033[33m" // Yellow
+		return "\033[33m"
 	case "low":
-		return "\033[32m" // Green
+		return "\033[32m"
 	default:
 		return ""
 	}
 }
 
-// resetColor returns the ANSI escape code to reset terminal text formatting if color output is supported, or an empty string otherwise.
 func resetColor() string {
-	if !isColorSupported() {
+	if !reporter.UseColor {
 		return ""
 	}
 	return "\033[0m"
@@ -445,29 +423,19 @@ type AnalysisSummary struct {
 	LowRisk       int `json:"low_risk"`
 }
 
-// getSummary aggregates the total number of subjects and counts of each risk level from the provided permissions.
-// It returns an AnalysisSummary with these aggregated values.
 func getSummary(permissions []analyzer.SubjectPermissions) AnalysisSummary {
-	summary := AnalysisSummary{
-		TotalSubjects: len(permissions),
-		CriticalRisk:  0,
-		HighRisk:      0,
-		MediumRisk:    0,
-		LowRisk:       0,
-	}
-
+	s := AnalysisSummary{TotalSubjects: len(permissions)}
 	for _, perm := range permissions {
 		switch perm.RiskLevel {
 		case analyzer.RiskLevelCritical:
-			summary.CriticalRisk++
+			s.CriticalRisk++
 		case analyzer.RiskLevelHigh:
-			summary.HighRisk++
+			s.HighRisk++
 		case analyzer.RiskLevelMedium:
-			summary.MediumRisk++
+			s.MediumRisk++
 		case analyzer.RiskLevelLow:
-			summary.LowRisk++
+			s.LowRisk++
 		}
 	}
-
-	return summary
+	return s
 }

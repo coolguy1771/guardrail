@@ -205,8 +205,13 @@ func (a *Analyzer) fetchFromCluster(ctx context.Context) ([]runtime.Object, []ru
 }
 
 // buildRoleMap creates a map for quick role lookup.
+// Built-in ClusterRoles are seeded first; parsed roles override them when present.
 func (a *Analyzer) buildRoleMap(roles []runtime.Object) map[string]runtime.Object {
 	roleMap := make(map[string]runtime.Object)
+
+	for name, cr := range BuiltinClusterRoles {
+		roleMap[fmt.Sprintf("ClusterRole//%s", name)] = cr
+	}
 
 	for _, role := range roles {
 		switch r := role.(type) {
@@ -256,7 +261,14 @@ func (a *Analyzer) analyzeRoleBinding(
 
 	role, exists := roleMap[roleKey]
 	if !exists {
-		// Role not found, create a placeholder
+		// Role not found in manifests or built-in registry — risk is unknown; default to MEDIUM.
+		unresolvedRule := PolicyRuleAnalysis{
+			HumanReadable: fmt.Sprintf("Warning: role %q could not be resolved from analyzed manifests", binding.RoleRef.Name),
+			SecurityImpact: SecurityImpact{
+				Level:       RiskLevelMedium,
+				Description: "Role reference unresolved; actual permissions unknown",
+			},
+		}
 		for _, subject := range binding.Subjects {
 			result = append(result, &SubjectPermissions{
 				Subject: subject,
@@ -266,12 +278,12 @@ func (a *Analyzer) analyzeRoleBinding(
 						RoleKind:    binding.RoleRef.Kind,
 						Namespace:   binding.Namespace,
 						Scope:       scope,
-						Rules:       []PolicyRuleAnalysis{},
+						Rules:       []PolicyRuleAnalysis{unresolvedRule},
 						BindingName: binding.Name,
 						BindingKind: "RoleBinding",
 					},
 				},
-				RiskLevel: RiskLevelLow, // Default to low risk for missing roles
+				RiskLevel: RiskLevelMedium,
 			})
 		}
 		return result
@@ -321,7 +333,14 @@ func (a *Analyzer) analyzeClusterRoleBinding(
 	role, exists := roleMap[roleKey]
 
 	if !exists {
-		// Role not found, create a placeholder
+		// Role not found in manifests or built-in registry — risk is unknown; default to MEDIUM.
+		unresolvedRule := PolicyRuleAnalysis{
+			HumanReadable: fmt.Sprintf("Warning: ClusterRole %q could not be resolved from analyzed manifests", binding.RoleRef.Name),
+			SecurityImpact: SecurityImpact{
+				Level:       RiskLevelMedium,
+				Description: "Role reference unresolved; actual permissions unknown",
+			},
+		}
 		for _, subject := range binding.Subjects {
 			result = append(result, &SubjectPermissions{
 				Subject: subject,
@@ -329,14 +348,14 @@ func (a *Analyzer) analyzeClusterRoleBinding(
 					{
 						RoleName:    binding.RoleRef.Name,
 						RoleKind:    binding.RoleRef.Kind,
-						Namespace:   "", // Cluster-wide binding has no namespace
+						Namespace:   "",
 						Scope:       "cluster-wide",
-						Rules:       []PolicyRuleAnalysis{},
+						Rules:       []PolicyRuleAnalysis{unresolvedRule},
 						BindingName: binding.Name,
 						BindingKind: "ClusterRoleBinding",
 					},
 				},
-				RiskLevel: RiskLevelLow, // Default to low risk for missing roles
+				RiskLevel: RiskLevelMedium,
 			})
 		}
 		return result
