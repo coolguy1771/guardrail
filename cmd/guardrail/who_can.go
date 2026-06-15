@@ -13,8 +13,6 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/coolguy1771/guardrail/pkg/analyzer"
-	"github.com/coolguy1771/guardrail/pkg/kubernetes"
-	"github.com/coolguy1771/guardrail/pkg/reporter"
 )
 
 //nolint:gochecknoglobals // CLI flags need to be global for Cobra
@@ -59,7 +57,7 @@ about which grants make them dangerous. Useful for a quick security sweep.`,
 	RunE: runDangerous,
 }
 
-// init registers the who-can and dangerous subcommands and binds their associated CLI flags.
+//nolint:gochecknoinits // Cobra requires init for command registration
 func init() {
 	rootCmd.AddCommand(whoCanCmd)
 	rootCmd.AddCommand(dangerousCmd)
@@ -80,7 +78,6 @@ func init() {
 	dangerousCmd.Flags().StringVar(&dangerousKubectx, "context", "", "Kubernetes context to use")
 }
 
-// runWhoCan queries RBAC to report subjects that can perform the specified verb on a resource.
 func runWhoCan(cmd *cobra.Command, _ []string) error {
 	if whoCanVerb == "" || whoCanResource == "" {
 		_ = cmd.Usage()
@@ -111,7 +108,6 @@ func runWhoCan(cmd *cobra.Command, _ []string) error {
 	return outputWhoCanText(matches, whoCanVerb, whoCanResource, w)
 }
 
-// runDangerous identifies and outputs all subjects with HIGH or CRITICAL risk permissions.
 func runDangerous(cmd *cobra.Command, _ []string) error {
 	a, err := loadAnalyzer(dangerousFile, dangerousDirectory, dangerousCluster, dangerousKubeconfig, dangerousKubectx)
 	if err != nil {
@@ -138,7 +134,7 @@ func runDangerous(cmd *cobra.Command, _ []string) error {
 	return outputDangerousText(permissions, w)
 }
 
-// LoadAnalyzer constructs an Analyzer from exactly one input source: a file, directory, or live cluster.
+// loadAnalyzer creates an Analyzer from the given input source flags.
 func loadAnalyzer(fileArg, dirArg string, clusterArg bool, kubeconfigArg, kubectxArg string) (*analyzer.Analyzer, error) {
 	inputCount := 0
 	if fileArg != "" {
@@ -159,26 +155,9 @@ func loadAnalyzer(fileArg, dirArg string, clusterArg bool, kubeconfigArg, kubect
 	}
 
 	if clusterArg {
-		client, err := kubernetes.NewClient(kubeconfigArg, kubectxArg)
-		if err != nil {
-			return nil, fmt.Errorf("cannot connect to cluster: %w", err)
-		}
-		return analyzer.NewAnalyzer(client.GetRBACReader()), nil
+		return createClusterAnalyzer(kubeconfigArg, kubectxArg)
 	}
-
-	if fileArg != "" {
-		objects, err := parseFile(fileArg)
-		if err != nil {
-			return nil, fmt.Errorf("cannot parse %q: %w", fileArg, err)
-		}
-		return analyzer.NewAnalyzerFromObjects(objects), nil
-	}
-
-	objects, err := parseDirectory(dirArg)
-	if err != nil {
-		return nil, fmt.Errorf("cannot read directory %q: %w", dirArg, err)
-	}
-	return analyzer.NewAnalyzerFromObjects(objects), nil
+	return createFileAnalyzer(fileArg, dirArg)
 }
 
 // WhoCanMatch records a subject and the specific grant that confers the permission.
@@ -193,7 +172,7 @@ type WhoCanMatch struct {
 	Scope       string `json:"scope"`
 }
 
-// WhoCanFilter returns subjects that have permission to perform the requested verb on the requested resource, optionally filtered by API group. Duplicates by subject and binding are omitted.
+// whoCanFilter returns subjects that have the requested verb on the requested resource.
 func whoCanFilter(permissions []analyzer.SubjectPermissions, verb, resource, apiGroup string) []WhoCanMatch {
 	var matches []WhoCanMatch
 	seen := make(map[string]bool)
@@ -227,7 +206,7 @@ func whoCanFilter(permissions []analyzer.SubjectPermissions, verb, resource, api
 	return matches
 }
 
-// ruleMatches reports whether a policy rule grants the requested verb and resource, optionally constrained by API group.
+// ruleMatches checks whether a PolicyRuleAnalysis grants the requested verb+resource.
 func ruleMatches(rule analyzer.PolicyRuleAnalysis, verb, resource, apiGroup string) bool {
 	verbMatch := false
 	for _, v := range rule.Verbs {
@@ -262,18 +241,13 @@ func ruleMatches(rule analyzer.PolicyRuleAnalysis, verb, resource, apiGroup stri
 	return false
 }
 
-// OutputWhoCanText writes a formatted text report of subjects that can perform the specified verb on the resource. It returns any error encountered while writing.
 func outputWhoCanText(matches []WhoCanMatch, verb, resource string, w io.Writer) error {
 	if len(matches) == 0 {
 		fmt.Fprintf(w, "No subjects can %s %s.\n", verb, resource)
 		return nil
 	}
 
-	if reporter.UseColor {
-		fmt.Fprintf(w, "🔍 Subjects that can %s %s:\n", verb, resource)
-	} else {
-		fmt.Fprintf(w, "Subjects that can %s %s:\n", verb, resource)
-	}
+	fmt.Fprintf(w, "%sSubjects that can %s %s:\n", colorLabel("🔍 ", ""), verb, resource)
 	fmt.Fprintf(w, "%s\n", strings.Repeat("─", outputSeparatorLength))
 
 	for _, m := range matches {
@@ -290,7 +264,6 @@ func outputWhoCanText(matches []WhoCanMatch, verb, resource string, w io.Writer)
 	return nil
 }
 
-// It includes the requested verb, resource, matching subjects, and the count of matches.
 func outputWhoCanJSON(matches []WhoCanMatch, verb, resource string, w io.Writer) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
@@ -302,7 +275,6 @@ func outputWhoCanJSON(matches []WhoCanMatch, verb, resource string, w io.Writer)
 	})
 }
 
-// OutputDangerousText writes a formatted text report of subjects with HIGH or CRITICAL risk permissions to w.
 func outputDangerousText(permissions []analyzer.SubjectPermissions, w io.Writer) error {
 	critical := analyzer.FilterByRiskLevel(permissions, analyzer.RiskLevelCritical)
 	high := analyzer.FilterByRiskLevel(permissions, analyzer.RiskLevelHigh)
@@ -312,15 +284,11 @@ func outputDangerousText(permissions []analyzer.SubjectPermissions, w io.Writer)
 		return nil
 	}
 
-	if reporter.UseColor {
-		fmt.Fprintf(w, "⚠️  Dangerous RBAC Subjects\n")
-	} else {
-		fmt.Fprintf(w, "Dangerous RBAC Subjects\n")
-	}
+	fmt.Fprintf(w, "%sDangerous RBAC Subjects\n", colorLabel("⚠️  ", ""))
 	fmt.Fprintf(w, "%s\n\n", strings.Repeat("─", outputSeparatorLength))
 
 	if len(critical) > 0 {
-		fmt.Fprintf(w, "CRITICAL (%d)\n", len(critical))
+
 		for _, sp := range critical {
 			printSubjectAnalysis(sp, false, w)
 		}
@@ -335,8 +303,6 @@ func outputDangerousText(permissions []analyzer.SubjectPermissions, w io.Writer)
 	return nil
 }
 
-// outputDangerousJSON encodes dangerous subjects as indented JSON to w.
-// Returns any JSON encoding error.
 func outputDangerousJSON(dangerous []analyzer.SubjectPermissions, w io.Writer) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")

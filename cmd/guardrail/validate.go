@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -37,7 +36,7 @@ var validateCmd = &cobra.Command{
 	RunE:  runValidate,
 }
 
-// init registers the validateCmd command with rootCmd and configures its flags, binding them to Viper configuration keys.
+//nolint:gochecknoinits // Cobra requires init for command registration
 func init() {
 	rootCmd.AddCommand(validateCmd)
 
@@ -58,7 +57,7 @@ func init() {
 	_ = viper.BindPFlag("validate.fail-on", validateCmd.Flags().Lookup("fail-on"))
 }
 
-// runValidate validates Kubernetes RBAC resources from a specified source (live cluster, files, or directory), reports findings in the configured format, and returns an error if findings meet or exceed the configured severity threshold.
+//nolint:gocognit // Validation logic requires handling multiple cases
 func runValidate(cmd *cobra.Command, _ []string) error {
 	filesArg := viper.GetStringSlice("files")
 	directoryArg := viper.GetString("directory")
@@ -121,15 +120,7 @@ func runValidate(cmd *cobra.Command, _ []string) error {
 		if len(filesArg) > 0 {
 			filesToProcess = filesArg
 		} else {
-			err := filepath.Walk(directoryArg, func(path string, info os.FileInfo, err error) error {
-				if err != nil {
-					return err
-				}
-				if !info.IsDir() && (filepath.Ext(path) == ".yaml" || filepath.Ext(path) == ".yml") {
-					filesToProcess = append(filesToProcess, path)
-				}
-				return nil
-			})
+			filesToProcess, err = listYAMLFiles(directoryArg)
 			if err != nil {
 				return fmt.Errorf("cannot read directory %q: %w", directoryArg, err)
 			}
@@ -207,10 +198,7 @@ func runValidate(cmd *cobra.Command, _ []string) error {
 // parseSeverityThreshold converts the --fail-on string to a numeric rank.
 // Returns -1 for "none" (never fail), 0 for "any" (fail on anything), or the
 // SeverityRank value for named severities. Empty string defaults to "high".
-// parseSeverityThreshold converts a severity level string into a numeric rank.
-// Valid inputs are "none" (-1), "any" (0), "info", "low", "medium", "high" (default),
-// and "critical". An empty string is treated as "high".
-// It returns a non-nil error if the input is not a recognized severity level.
+// Returns an error for unknown values.
 func parseSeverityThreshold(s string) (int, error) {
 	switch s {
 	case "none":
