@@ -116,7 +116,7 @@ var Catalog = []RuleMeta{
 	},
 }
 
-// CatalogByID returns a map of rule ID → RuleMeta for O(1) lookups.
+// CatalogByID returns a map of rule IDs to their corresponding metadata.
 func CatalogByID() map[string]RuleMeta {
 	m := make(map[string]RuleMeta, len(Catalog))
 	for _, r := range Catalog {

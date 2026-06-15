@@ -37,7 +37,7 @@ var validateCmd = &cobra.Command{
 	RunE:  runValidate,
 }
 
-//nolint:gochecknoinits // Cobra requires init for command registration
+// init registers the validateCmd command with rootCmd and configures its flags, binding them to Viper configuration keys.
 func init() {
 	rootCmd.AddCommand(validateCmd)
 
@@ -58,7 +58,7 @@ func init() {
 	_ = viper.BindPFlag("validate.fail-on", validateCmd.Flags().Lookup("fail-on"))
 }
 
-//nolint:gocognit // Validation logic requires handling multiple cases
+// runValidate validates Kubernetes RBAC resources from a specified source (live cluster, files, or directory), reports findings in the configured format, and returns an error if findings meet or exceed the configured severity threshold.
 func runValidate(cmd *cobra.Command, _ []string) error {
 	filesArg := viper.GetStringSlice("files")
 	directoryArg := viper.GetString("directory")
@@ -207,7 +207,10 @@ func runValidate(cmd *cobra.Command, _ []string) error {
 // parseSeverityThreshold converts the --fail-on string to a numeric rank.
 // Returns -1 for "none" (never fail), 0 for "any" (fail on anything), or the
 // SeverityRank value for named severities. Empty string defaults to "high".
-// Returns an error for unknown values.
+// parseSeverityThreshold converts a severity level string into a numeric rank.
+// Valid inputs are "none" (-1), "any" (0), "info", "low", "medium", "high" (default),
+// and "critical". An empty string is treated as "high".
+// It returns a non-nil error if the input is not a recognized severity level.
 func parseSeverityThreshold(s string) (int, error) {
 	switch s {
 	case "none":

@@ -17,7 +17,7 @@ var versionCmd = &cobra.Command{
 	RunE:  runVersion,
 }
 
-//nolint:gochecknoinits // Cobra requires init for command registration
+// init registers the version subcommand with the root command.
 func init() {
 	rootCmd.AddCommand(versionCmd)
 }
@@ -28,6 +28,7 @@ type versionInfo struct {
 	Date    string `json:"date"`
 }
 
+// runVersion outputs the application version information in either JSON or human-readable format based on the configured output mode.
 func runVersion(cmd *cobra.Command, _ []string) error {
 	info := versionInfo{
 		Version: version,

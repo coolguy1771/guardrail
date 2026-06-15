@@ -43,7 +43,7 @@ maintain secure, compliant, and well-structured RBAC configurations.`,
 	},
 }
 
-//nolint:gochecknoinits // Cobra requires init for command registration
+// init registers the root command's persistent flags for config, output format, color control, and verbosity, and binds them to Viper for configuration management.
 func init() {
 	cobra.OnInitialize(initConfig)
 
@@ -57,6 +57,7 @@ func init() {
 	_ = viper.BindPFlag("verbose", rootCmd.PersistentFlags().Lookup("verbose"))
 }
 
+// initConfig initializes the application's configuration system by loading Viper from a config file, the GUARDRAIL_CONFIG environment variable, or standard system paths as fallback. Environment variable overrides are enabled. The program exits with status 1 if the home directory lookup fails.
 func initConfig() {
 	if cfgFile != "" {
 		viper.SetConfigFile(cfgFile)
@@ -84,6 +85,7 @@ func initConfig() {
 	}
 }
 
+// Main initializes the reporter version and executes the root CLI command, exiting with status 1 if execution fails.
 func main() {
 	reporter.Version = version
 	if err := rootCmd.Execute(); err != nil {

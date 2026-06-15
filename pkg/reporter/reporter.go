@@ -29,6 +29,9 @@ var Version = "dev"
 //nolint:gochecknoglobals // Package-level state intentionally shared across output paths
 var UseColor = defaultUseColor()
 
+// defaultUseColor determines whether colored output should be enabled.
+// It checks the NO_COLOR environment variable and whether stdout is a character device.
+// It returns false if NO_COLOR is set or if stdout is not a character device; otherwise true.
 func defaultUseColor() bool {
 	if os.Getenv("NO_COLOR") != "" {
 		return false
@@ -236,7 +239,7 @@ type SARIFArtifactLocation struct {
 
 // buildSARIFRules returns SARIF rule descriptors for all catalog entries.
 // Building from the catalog (rather than from findings) means SARIF consumers always
-// see the full set of available checks, even for runs with zero violations.
+// BuildSARIFRules constructs a complete SARIF rule set from the validator catalog.
 func buildSARIFRules() []SARIFRule {
 	rules := make([]SARIFRule, 0, len(validator.Catalog))
 	for _, meta := range validator.Catalog {
@@ -312,7 +315,7 @@ func (r *SARIFReporter) Report(findings []validator.Finding, writer io.Writer) e
 	return encoder.Encode(sarif)
 }
 
-// Helper functions
+// groupBySeverity groups findings by their severity level.
 
 func groupBySeverity(findings []validator.Finding) map[validator.Severity][]validator.Finding {
 	grouped := make(map[validator.Severity][]validator.Finding)
@@ -322,6 +325,8 @@ func groupBySeverity(findings []validator.Finding) map[validator.Severity][]vali
 	return grouped
 }
 
+// getSeverityIcon returns a visual representation of a severity level: an emoji
+// icon if color output is enabled, otherwise a bracketed text label.
 func getSeverityIcon(severity validator.Severity) string {
 	if UseColor {
 		switch severity {
@@ -355,6 +360,7 @@ func getSeverityIcon(severity validator.Severity) string {
 	}
 }
 
+// severityToSARIFLevel maps a severity to its corresponding SARIF result level string.
 func severityToSARIFLevel(severity validator.Severity) string {
 	switch severity {
 	case validator.SeverityCritical, validator.SeverityHigh:

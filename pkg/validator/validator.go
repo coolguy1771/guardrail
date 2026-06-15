@@ -146,7 +146,7 @@ func validateWildcardPermissions(obj runtime.Object) []Finding {
 	return findings
 }
 
-// checkRulesForWildcards checks PolicyRules for wildcard usage.
+// checkRulesForWildcards reports findings for any wildcard usage found in policy rule verbs, resources, or API groups.
 func checkRulesForWildcards(rules []rbacv1.PolicyRule, name, namespace, kind string) []Finding {
 	meta := Catalog[0] // RBAC001
 	var findings []Finding
