@@ -5,12 +5,16 @@ BINARY_NAME=guardrail
 BINARY_PATH=./build/$(BINARY_NAME)
 CMD_PATH=./cmd/guardrail
 GO_FILES=$(shell find . -name '*.go' -type f)
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
+DATE    ?= $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
+LDFLAGS := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)
 
 # Build the binary
 build:
 	@echo "Building $(BINARY_NAME)..."
 	@mkdir -p build
-	@go build -ldflags="-s -w" -o $(BINARY_PATH) $(CMD_PATH)
+	@go build -ldflags="$(LDFLAGS)" -o $(BINARY_PATH) $(CMD_PATH)
 	@echo "Build complete: $(BINARY_PATH)"
 
 # Cross-platform build

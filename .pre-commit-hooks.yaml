@@ -1,0 +1,32 @@
+---
+# Pre-commit hook definitions for guardrail.
+#
+# To use in your project, add this to .pre-commit-config.yaml:
+#
+#   repos:
+#     - repo: https://github.com/coolguy1771/guardrail
+#       rev: v0.1.0   # pin to a release tag
+#       hooks:
+#         - id: guardrail-validate
+#
+# See https://pre-commit.com for documentation.
+
+- id: guardrail-validate
+  name: guardrail RBAC validate
+  description: Validate Kubernetes RBAC manifests for security issues
+  language: golang
+  entry: guardrail validate
+  args: ["--dir", ".", "--fail-on", "high"]
+  types: [yaml]
+  pass_filenames: false   # guardrail uses --dir / --file, not positional args
+  additional_dependencies: []
+
+- id: guardrail-validate-strict
+  name: guardrail RBAC validate (strict)
+  description: Validate Kubernetes RBAC manifests; fail on any finding including MEDIUM
+  language: golang
+  entry: guardrail validate
+  args: ["--dir", ".", "--fail-on", "medium"]
+  types: [yaml]
+  pass_filenames: false
+  additional_dependencies: []

@@ -110,47 +110,52 @@ func TestNew(t *testing.T) {
 }
 
 func TestTextReporter_Report(t *testing.T) {
-	reporter := &TextReporter{}
+	r := &TextReporter{}
+	origUseColor := UseColor
+	defer func() { UseColor = origUseColor }()
 
-	t.Run("no findings", func(t *testing.T) {
+	t.Run("no findings no-color", func(t *testing.T) {
+		UseColor = false
 		var buf bytes.Buffer
-		err := reporter.Report([]validator.Finding{}, &buf)
+		err := r.Report([]validator.Finding{}, &buf)
 		testutil.AssertNil(t, err, "Report should not return error")
-
 		output := buf.String()
-		if !strings.Contains(output, "✅ No issues found!") {
+		if !strings.Contains(output, "No issues found.") {
 			t.Errorf("expected success message, got: %s", output)
 		}
 	})
 
-	t.Run("with findings", func(t *testing.T) {
+	t.Run("no findings with color", func(t *testing.T) {
+		UseColor = true
+		var buf bytes.Buffer
+		err := r.Report([]validator.Finding{}, &buf)
+		testutil.AssertNil(t, err, "Report should not return error")
+		output := buf.String()
+		if !strings.Contains(output, "✅ No issues found.") {
+			t.Errorf("expected emoji success message, got: %s", output)
+		}
+	})
+
+	t.Run("with findings no-color", func(t *testing.T) {
+		UseColor = false
 		findings := createTestFindings()
 		var buf bytes.Buffer
-		err := reporter.Report(findings, &buf)
+		err := r.Report(findings, &buf)
 		testutil.AssertNil(t, err, "Report should not return error")
 
 		output := buf.String()
 
-		// Check summary
 		if !strings.Contains(output, "Found 5 issue(s)") {
 			t.Errorf("expected summary with 5 issues, got: %s", output)
 		}
 
-		// Check severity sections
-		expectedSeverities := []string{
-			"🔴 HIGH (2)",
-			"🟡 MEDIUM (1)",
-			"🔵 LOW (1)",
-			"ℹ️ INFO (1)",
-		}
-
-		for _, expected := range expectedSeverities {
+		// ASCII severity labels in no-color mode
+		for _, expected := range []string{"[HIGH]", "[MED]", "[LOW]", "[INFO]"} {
 			if !strings.Contains(output, expected) {
-				t.Errorf("expected to find '%s' in output", expected)
+				t.Errorf("expected ASCII severity label '%s' in output, got: %s", expected, output)
 			}
 		}
 
-		// Check specific findings
 		if !strings.Contains(output, "RBAC001") {
 			t.Error("expected to find RBAC001 in output")
 		}
@@ -162,6 +167,22 @@ func TestTextReporter_Report(t *testing.T) {
 		}
 		if !strings.Contains(output, "Replace wildcard verb with specific verbs") {
 			t.Error("expected to find remediation in output")
+		}
+	})
+
+	t.Run("with findings with color", func(t *testing.T) {
+		UseColor = true
+		findings := createTestFindings()
+		var buf bytes.Buffer
+		err := r.Report(findings, &buf)
+		testutil.AssertNil(t, err, "Report should not return error")
+
+		output := buf.String()
+		// HIGH icon is now 🟠 (orange); 🔴 is reserved for CRITICAL
+		for _, expected := range []string{"🟠 HIGH (2)", "🟡 MEDIUM (1)", "🔵 LOW (1)"} {
+			if !strings.Contains(output, expected) {
+				t.Errorf("expected emoji severity header '%s' in output, got: %s", expected, output)
+			}
 		}
 	})
 }
@@ -228,12 +249,11 @@ func TestSARIFReporter_Report(t *testing.T) {
 
 	run := sarif.Runs[0]
 	testutil.AssertEqual(t, "guardrail", run.Tool.Driver.Name, "tool name")
-	testutil.AssertEqual(t, "1.0.0", run.Tool.Driver.Version, "tool version")
+	testutil.AssertEqual(t, Version, run.Tool.Driver.Version, "tool version")
 	testutil.AssertEqual(t, "https://github.com/coolguy1771/guardrail", run.Tool.Driver.InformationURI, "tool URI")
 
-	// Check rules (should be deduplicated)
-	// We have 5 findings but only 5 unique rules in our test data
-	testutil.AssertEqual(t, 5, len(run.Tool.Driver.Rules), "unique rules count")
+	// SARIF always includes all catalog rules, not just triggered ones
+	testutil.AssertEqual(t, len(validator.Catalog), len(run.Tool.Driver.Rules), "unique rules count")
 
 	// Check results
 	testutil.AssertEqual(t, 5, len(run.Results), "results count")
@@ -241,7 +261,7 @@ func TestSARIFReporter_Report(t *testing.T) {
 	// Check first result
 	firstResult := run.Results[0]
 	testutil.AssertEqual(t, "RBAC001", firstResult.RuleID, "first result rule ID")
-	testutil.AssertEqual(t, "error", firstResult.Level, "first result level (HIGH -> error)")
+	testutil.AssertEqual(t, "error", firstResult.Level, "first result level (HIGH/CRITICAL -> error)")
 	testutil.AssertEqual(t, "Wildcard verb '*' found in Role", firstResult.Message.Text, "first result message")
 
 	// Check location
@@ -275,23 +295,48 @@ func TestGroupBySeverity(t *testing.T) {
 }
 
 func TestGetSeverityIcon(t *testing.T) {
-	tests := []struct {
-		severity validator.Severity
-		expected string
-	}{
-		{validator.SeverityHigh, "🔴"},
-		{validator.SeverityMedium, "🟡"},
-		{validator.SeverityLow, "🔵"},
-		{validator.SeverityInfo, "ℹ️"},
-		{validator.Severity("unknown"), "•"},
-	}
+	origUseColor := UseColor
+	defer func() { UseColor = origUseColor }()
 
-	for _, tt := range tests {
-		t.Run(string(tt.severity), func(t *testing.T) {
-			icon := getSeverityIcon(tt.severity)
-			testutil.AssertEqual(t, tt.expected, icon, "severity icon")
-		})
-	}
+	t.Run("no-color ASCII", func(t *testing.T) {
+		UseColor = false
+		tests := []struct {
+			severity validator.Severity
+			expected string
+		}{
+			{validator.SeverityCritical, "[CRIT]  "},
+			{validator.SeverityHigh, "[HIGH]  "},
+			{validator.SeverityMedium, "[MED]   "},
+			{validator.SeverityLow, "[LOW]   "},
+			{validator.SeverityInfo, "[INFO]  "},
+			{validator.Severity("unknown"), "[?]     "},
+		}
+		for _, tt := range tests {
+			t.Run(string(tt.severity), func(t *testing.T) {
+				testutil.AssertEqual(t, tt.expected, getSeverityIcon(tt.severity), "severity icon")
+			})
+		}
+	})
+
+	t.Run("color emoji", func(t *testing.T) {
+		UseColor = true
+		tests := []struct {
+			severity validator.Severity
+			expected string
+		}{
+			{validator.SeverityCritical, "🔴"},
+			{validator.SeverityHigh, "🟠"},
+			{validator.SeverityMedium, "🟡"},
+			{validator.SeverityLow, "🔵"},
+			{validator.SeverityInfo, "ℹ️ "},
+			{validator.Severity("unknown"), "• "},
+		}
+		for _, tt := range tests {
+			t.Run(string(tt.severity), func(t *testing.T) {
+				testutil.AssertEqual(t, tt.expected, getSeverityIcon(tt.severity), "severity icon")
+			})
+		}
+	})
 }
 
 func TestSeverityToSARIFLevel(t *testing.T) {

@@ -15,6 +15,7 @@ import (
 
 	"github.com/coolguy1771/guardrail/internal/testutil"
 	"github.com/coolguy1771/guardrail/pkg/analyzer"
+	"github.com/coolguy1771/guardrail/pkg/reporter"
 )
 
 // setupAnalyzeTestFiles creates test YAML files in a temporary directory.
@@ -216,7 +217,7 @@ func checkFilterByRiskLevel(t *testing.T, output string) {
 
 // checkShowRolesDetail validates detailed role output.
 func checkShowRolesDetail(t *testing.T, output string) {
-	if !strings.Contains(output, "🔍 Detailed Permissions:") {
+	if !strings.Contains(output, "Detailed Permissions:") {
 		t.Errorf("expected detailed permissions section, got: %s", output)
 	}
 }
@@ -250,7 +251,7 @@ func resetAnalyzeFlags() {
 	subject = ""
 	showRoles = false
 	riskLevel = ""
-	noColor = false
+	reporter.UseColor = false // tests run without a TTY; keep output predictable
 }
 
 // setupAnalyzeCommand creates and configures the analyze command for testing.
@@ -277,10 +278,11 @@ func setupAnalyzeCommand(outBuf, errBuf *bytes.Buffer) {
 	analyzeCmd.Flags().StringVarP(&subject, "subject", "s", "", "Filter by subject name")
 	analyzeCmd.Flags().BoolVar(&showRoles, "show-roles", false, "Show detailed role information")
 	analyzeCmd.Flags().StringVar(&riskLevel, "risk-level", "", "Filter by risk level")
-	analyzeCmd.Flags().BoolVar(&noColor, "no-color", false, "Disable colored output")
 
-	// Add output flag to root command
+	// Add persistent flags to root command (mirrors main.go)
 	rootCmd.PersistentFlags().StringP("output", "o", "text", "Output format (text, json, sarif)")
+	rootCmd.PersistentFlags().Bool("no-color", false, "Disable colors and emoji in output")
+	rootCmd.PersistentFlags().BoolP("verbose", "v", false, "Print diagnostic messages")
 
 	// Bind flags to viper
 	_ = viper.BindPFlag("analyze.file", analyzeCmd.Flags().Lookup("file"))
@@ -291,7 +293,6 @@ func setupAnalyzeCommand(outBuf, errBuf *bytes.Buffer) {
 	_ = viper.BindPFlag("analyze.subject", analyzeCmd.Flags().Lookup("subject"))
 	_ = viper.BindPFlag("analyze.show-roles", analyzeCmd.Flags().Lookup("show-roles"))
 	_ = viper.BindPFlag("analyze.risk-level", analyzeCmd.Flags().Lookup("risk-level"))
-	_ = viper.BindPFlag("analyze.no-color", analyzeCmd.Flags().Lookup("no-color"))
 	_ = viper.BindPFlag("output", rootCmd.PersistentFlags().Lookup("output"))
 
 	rootCmd.AddCommand(analyzeCmd)
@@ -478,49 +479,71 @@ func TestFilterPermissions(t *testing.T) {
 }
 
 func TestColorFunctions(t *testing.T) {
-	// Test with color disabled
-	noColor = true
-	defer func() { noColor = false }()
+	origUseColor := reporter.UseColor
+	defer func() { reporter.UseColor = origUseColor }()
 
-	if isColorSupported() {
-		t.Error("color should not be supported when noColor is true")
-	}
+	// Test with color disabled via reporter.UseColor
+	reporter.UseColor = false
 
 	if getColorForRisk("critical") != "" {
-		t.Error("expected empty string for color when disabled")
+		t.Error("expected empty string for color when UseColor is false")
 	}
-
 	if resetColor() != "" {
-		t.Error("expected empty string for reset when disabled")
+		t.Error("expected empty string for reset when UseColor is false")
 	}
 
-	// Test with NO_COLOR env var
-	noColor = false
-	t.Setenv("NO_COLOR", "1")
+	// Test with color enabled
+	reporter.UseColor = true
 
-	if isColorSupported() {
-		t.Error("color should not be supported with NO_COLOR env var")
+	if getColorForRisk("critical") == "" {
+		t.Error("expected non-empty ANSI code for critical when UseColor is true")
+	}
+	if resetColor() == "" {
+		t.Error("expected non-empty reset code when UseColor is true")
 	}
 }
 
-func TestRiskIcon(t *testing.T) {
-	tests := []struct {
-		level    analyzer.RiskLevel
-		expected string
-	}{
-		{analyzer.RiskLevelCritical, "🔴"},
-		{analyzer.RiskLevelHigh, "🟠"},
-		{analyzer.RiskLevelMedium, "🟡"},
-		{analyzer.RiskLevelLow, "🟢"},
-		{analyzer.RiskLevel("unknown"), "⚪"},
-	}
+func TestRiskLabel(t *testing.T) {
+	origUseColor := reporter.UseColor
+	defer func() { reporter.UseColor = origUseColor }()
 
-	for _, tt := range tests {
-		t.Run(string(tt.level), func(t *testing.T) {
-			icon := getRiskIcon(tt.level)
-			testutil.AssertEqual(t, tt.expected, icon, "risk icon")
-		})
-	}
+	t.Run("no-color ASCII labels", func(t *testing.T) {
+		reporter.UseColor = false
+		tests := []struct {
+			level    analyzer.RiskLevel
+			expected string
+		}{
+			{analyzer.RiskLevelCritical, "[CRIT]"},
+			{analyzer.RiskLevelHigh, "[HIGH]"},
+			{analyzer.RiskLevelMedium, "[MED] "},
+			{analyzer.RiskLevelLow, "[LOW] "},
+			{analyzer.RiskLevel("unknown"), "[?]   "},
+		}
+		for _, tt := range tests {
+			t.Run(string(tt.level), func(t *testing.T) {
+				testutil.AssertEqual(t, tt.expected, getRiskLabel(tt.level), "risk label")
+			})
+		}
+	})
+
+	t.Run("color emoji labels", func(t *testing.T) {
+		reporter.UseColor = true
+		tests := []struct {
+			level    analyzer.RiskLevel
+			expected string
+		}{
+			{analyzer.RiskLevelCritical, "🔴"},
+			{analyzer.RiskLevelHigh, "🟠"},
+			{analyzer.RiskLevelMedium, "🟡"},
+			{analyzer.RiskLevelLow, "🟢"},
+			{analyzer.RiskLevel("unknown"), "⚪"},
+		}
+		for _, tt := range tests {
+			t.Run(string(tt.level), func(t *testing.T) {
+				testutil.AssertEqual(t, tt.expected, getRiskLabel(tt.level), "risk label")
+			})
+		}
+	})
 }
 
 // Add missing imports.

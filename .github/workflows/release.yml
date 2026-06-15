@@ -18,7 +18,7 @@ env:
 jobs:
   lint-test:
     uses: ./.github/workflows/go-lint-test.yml
-    with: { go-version: "1.24" }
+    with: { go-version: "1.26" }
 
   release-binaries:
     needs: lint-test
@@ -29,7 +29,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
         with:
-          go-version: "1.24"
+          go-version: "1.26"
       - name: Install cosign
         uses: sigstore/cosign-installer@d7543c93d881b35a8faa02e8e3605f69b7a1ce62 # v3.10.0
       - name: Install syft for SBOM generation

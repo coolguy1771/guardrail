@@ -1,171 +1,129 @@
 # Guardrail Configuration
-# Default configuration for Kubernetes RBAC validation and analysis
+# All section keys listed here. Keys marked "# planned" are parsed but have no
+# effect in the current release; they are reserved for upcoming features.
 
-# Output format configuration
-output:
-  # Format: text, json, sarif, yaml
-  format: text
-  # Verbosity: quiet, normal, verbose
-  verbosity: normal
-  # Include timestamp in output
-  include_timestamp: true
-  # Color output (auto, always, never)
-  color: auto
+# Output format: text, json, sarif
+output: text
 
-# Validation rules configuration
+# Validation rules — one entry per built-in rule ID (RBAC001–RBAC014).
+# Only `enabled` and `severity` are effective now; other sub-keys are planned.
 rules:
-  # RBAC001: Wildcard permissions check
   RBAC001:
     enabled: true
     severity: CRITICAL
-    description: "Detects wildcard (*) permissions in RBAC rules"
-    remediation: "Replace wildcard permissions with specific resource and verb combinations"
-  
-  # RBAC002: Admin role binding check
+    description: "Wildcard (*) in verbs, resources, or apiGroups grants every possible permission."
+    remediation: "Replace wildcards with the specific verbs and resources your workload needs."
+
   RBAC002:
     enabled: true
-    severity: HIGH
-    description: "Detects bindings to cluster-admin or admin roles"
-    remediation: "Use principle of least privilege - create custom roles with minimal required permissions"
-  
-  # RBAC003: Privilege escalation check
+    severity: CRITICAL   # cluster-admin; sub-findings use HIGH/MEDIUM for admin/edit
+    description: "Binding to cluster-admin, admin, or edit grants far more access than most workloads require."
+    remediation: "Create a custom Role/ClusterRole with only the permissions your workload needs."
+
   RBAC003:
     enabled: true
-    severity: HIGH
-    description: "Detects potential privilege escalation through bind, escalate, or impersonate verbs"
-    remediation: "Restrict bind, escalate, and impersonate permissions to trusted service accounts only"
-  
-  # RBAC004: Secrets access check
+    severity: MEDIUM
+    description: "Direct get/list access to secrets exposes credentials to any compromise of the bound subject."
+    remediation: "Limit secrets access to specific named resources, or mount secrets as volumes instead."
+
   RBAC004:
     enabled: true
-    severity: MEDIUM
-    description: "Detects broad access to secrets"
-    remediation: "Limit secrets access to specific namespaces and secret names when possible"
-  
-  # RBAC005: System resource access
+    severity: LOW
+    description: "A ClusterRole whose rules only reference namespace-scoped resources should be a Role instead."
+    remediation: "Convert this ClusterRole to a Role in the specific namespace where it is needed."
+
   RBAC005:
     enabled: true
-    severity: HIGH
-    description: "Detects access to system-critical resources"
-    remediation: "Avoid granting access to system namespaces (kube-system, kube-public)"
-  
-  # RBAC006: Service account token access
+    severity: MEDIUM
+    description: "Service accounts with risky role names should not automount tokens (NIST SP 800-190)."
+    remediation: "Set automountServiceAccountToken: false on the ServiceAccount, or reduce its bound permissions."
+
   RBAC006:
     enabled: true
-    severity: MEDIUM
-    description: "Detects ability to create or modify service account tokens"
-    remediation: "Restrict token creation to automated systems only"
+    severity: HIGH
+    description: "The exec and attach verbs allow interactive shell access to running containers (NIST SP 800-190)."
+    remediation: "Grant exec/attach only to cluster administrators and audit all usage."
 
-# Analysis configuration
-analysis:
-  # Risk scoring weights
-  risk_weights:
-    wildcard_resource: 10
-    wildcard_verb: 8
-    admin_permission: 10
-    privilege_escalation: 9
-    secrets_access: 7
-    system_namespace: 8
-  
-  # Risk level thresholds
-  risk_levels:
-    critical: 25
-    high: 15
-    medium: 8
-    low: 0
+  RBAC007:
+    enabled: true
+    severity: HIGH
+    description: "Impersonation lets a subject act as any other user, group, or service account (NIST SP 800-190)."
+    remediation: "Restrict impersonate permission to a minimal, audited set of automation accounts."
+
+  RBAC008:
+    enabled: true
+    severity: HIGH
+    description: "The escalate and bind verbs bypass normal permission checks and enable privilege escalation (NIST SP 800-190)."
+    remediation: "Remove escalate/bind unless the subject is a trusted role-management controller."
+
+  RBAC009:
+    enabled: true
+    severity: HIGH
+    description: "Access to PodSecurityPolicy or SecurityContextConstraints can enable privileged containers (NIST SP 800-190)."
+    remediation: "Restrict PSP/SCC access and require explicit security context reviews."
+
+  RBAC010:
+    enabled: true
+    severity: MEDIUM
+    description: "Direct node and persistent-volume access bypasses namespace isolation (NIST SP 800-190)."
+    remediation: "Grant node/PV access only to the kubelet and storage controllers."
+
+  RBAC011:
+    enabled: true
+    severity: HIGH
+    description: "Write access to webhook configurations can intercept or mutate every API request (NIST SP 800-190)."
+    remediation: "Restrict webhook configuration mutations to your cluster-management tooling."
+
+  RBAC012:
+    enabled: true
+    severity: HIGH
+    description: "CRDs and APIServices extend the Kubernetes API surface; write access can affect all workloads (NIST SP 800-190)."
+    remediation: "Limit CRD/APIService write access to your GitOps or operator tooling."
+
+  RBAC013:
+    enabled: true
+    severity: MEDIUM
+    description: "ClusterRoles with cross-namespace resource access undermine multi-tenant isolation (NIST SP 800-190)."
+    remediation: "Scope roles to the namespace they operate in."
+
+  RBAC014:
+    enabled: true
+    severity: HIGH
+    description: "Creating tokens or signing certificates can forge identities and bypass authentication (NIST SP 800-190)."
+    remediation: "Restrict token and certificate creation to your PKI and service-mesh automation only."
 
 # Kubernetes client configuration
 kubernetes:
-  # Path to kubeconfig file (empty = use default locations)
-  kubeconfig: ""
-  # Kubernetes context to use (empty = current context)
-  context: ""
-  # Namespace to analyze (empty = all namespaces)
-  namespace: ""
-  # API request timeout in seconds
-  timeout: 30
-  # Rate limiting
-  qps: 50
-  burst: 100
+  kubeconfig: ""    # empty = use default kubeconfig locations
+  context: ""       # empty = current context
+  namespace: ""     # empty = all namespaces
+  timeout: 30       # API request timeout in seconds
 
-# Security scanning configuration
-security:
-  # Check for common security anti-patterns
-  check_antipatterns: true
-  # Validate against CIS Kubernetes Benchmark
-  cis_compliance: true
-  # Check for NIST compliance
-  nist_compliance: true
-  # Custom policy directory
-  custom_policies_dir: ""
-
-# Reporting configuration
+# Reporting options  # planned: group_by_namespace, max_findings, sort_by_severity
 reporting:
-  # Include remediation suggestions in reports
   include_remediation: true
-  # Include risk analysis in reports
-  include_risk_analysis: true
-  # Group findings by resource type
-  group_by_resource: false
-  # Group findings by namespace
-  group_by_namespace: true
-  # Include summary statistics
-  include_summary: true
-  # Maximum findings to display (0 = unlimited)
-  max_findings: 0
-  # Sort findings by severity
-  sort_by_severity: true
 
-# Integration configuration
+# Integration configuration  # planned
 integrations:
-  # GitHub integration
   github:
-    enabled: false
-    # Create issues for findings
-    create_issues: false
-    # Add comments to PRs
-    pr_comments: false
-  
-  # Slack notifications
+    enabled: false  # planned
   slack:
-    enabled: false
+    enabled: false  # planned
     webhook_url: ""
-    # Minimum severity to notify
     min_severity: HIGH
-  
-  # SARIF output for CI/CD
-  sarif:
-    # Include rule help URLs
-    include_help_urls: true
-    # Tool information
-    tool_name: "Guardrail"
-    tool_version: "1.0.0"
 
-# Caching configuration
+# Caching for cluster reads  # planned
 cache:
-  # Enable caching of Kubernetes API responses
-  enabled: true
-  # Cache directory
+  enabled: false
   directory: "~/.guardrail/cache"
-  # Cache TTL in minutes
-  ttl: 60
+  ttl: 60  # minutes
 
-# Logging configuration
-logging:
-  # Log level: debug, info, warn, error
-  level: info
-  # Log format: text, json
-  format: text
-  # Log file path (empty = stdout)
-  file: ""
-  # Include caller information
-  include_caller: false
-
-# Performance configuration
+# Performance  # planned: parallel parsing
 performance:
-  # Maximum concurrent workers
   max_workers: 10
-  # Enable profiling
-  profiling: false
-  # Profiling output directory
-  profiling_dir: "~/.guardrail/profiles"
+
+# Security framework compliance gates  # planned
+security:
+  cis_compliance: false   # planned
+  nist_compliance: false  # planned
+  custom_policies_dir: ""

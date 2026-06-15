@@ -581,8 +581,8 @@ func TestAnalyzeClusterRoleBinding_MissingRole(t *testing.T) {
 	result := analyzer.analyzeBinding(binding, roleMap)
 
 	testutil.AssertEqual(t, 1, len(result), "should have 1 subject permission")
-	testutil.AssertEqual(t, 0, len(result[0].Permissions[0].Rules), "should have empty rules for missing role")
-	testutil.AssertEqual(t, RiskLevelLow, result[0].RiskLevel, "should have low risk for missing role")
+	testutil.AssertEqual(t, 1, len(result[0].Permissions[0].Rules), "should have warning rule for unresolved role")
+	testutil.AssertEqual(t, RiskLevelMedium, result[0].RiskLevel, "unresolved role should have medium risk")
 }
 
 func TestEscalateRiskLevel(t *testing.T) {
@@ -740,8 +740,8 @@ func TestAnalyzeRoleBinding_MissingRole(t *testing.T) {
 	result := analyzer.analyzeBinding(binding, roleMap)
 
 	testutil.AssertEqual(t, 1, len(result), "should have 1 subject permission")
-	testutil.AssertEqual(t, 0, len(result[0].Permissions[0].Rules), "should have empty rules for missing role")
-	testutil.AssertEqual(t, RiskLevelLow, result[0].RiskLevel, "should have low risk for missing role")
+	testutil.AssertEqual(t, 1, len(result[0].Permissions[0].Rules), "should have warning rule for unresolved role")
+	testutil.AssertEqual(t, RiskLevelMedium, result[0].RiskLevel, "unresolved role should have medium risk")
 }
 
 func TestGetRiskPriorityAnalyzer(t *testing.T) {

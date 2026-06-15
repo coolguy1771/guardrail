@@ -43,9 +43,13 @@ func TestRootCommand(t *testing.T) {
 			},
 		},
 		{
-			name:        "version output",
-			args:        []string{"guardrail", "version"},
-			expectError: true, // version command doesn't exist yet
+			name: "version output",
+			args: []string{"guardrail", "version"},
+			checkOutput: func(t *testing.T, output string) {
+				if !strings.Contains(output, "guardrail") {
+					t.Errorf("expected version output, got: %s", output)
+				}
+			},
 		},
 		{
 			name:        "invalid command",
@@ -95,7 +99,12 @@ maintain secure, compliant, and well-structured RBAC configurations.`,
 				Use:   "analyze",
 				Short: "Analyze RBAC permissions and explain what subjects can do",
 			}
-			rootCmd.AddCommand(validateCmdLocal, analyzeCmdLocal)
+			versionCmdLocal := &cobra.Command{
+				Use:   "version",
+				Short: "Print version information",
+				RunE:  runVersion,
+			}
+			rootCmd.AddCommand(validateCmdLocal, analyzeCmdLocal, versionCmdLocal)
 
 			// Set output streams
 			rootCmd.SetOut(&buf)
@@ -138,6 +147,10 @@ func TestInitConfig(t *testing.T) {
 		viper.Reset()
 		cfgFile = configFile
 
+		// Enable verbose so the "config:" diagnostic line appears.
+		verbose = true
+		defer func() { verbose = false }()
+
 		// Capture stderr
 		oldStderr := os.Stderr
 		r, w, _ := os.Pipe()
@@ -156,9 +169,9 @@ func TestInitConfig(t *testing.T) {
 		}
 		output := buf.String()
 
-		// Check that config was loaded
-		if !strings.Contains(output, "Using config file:") {
-			t.Error("expected config file message")
+		// Verbose mode prints the config path to stderr.
+		if !strings.Contains(output, "config:") {
+			t.Error("expected 'config:' diagnostic in verbose mode")
 		}
 
 		// Check that value was loaded

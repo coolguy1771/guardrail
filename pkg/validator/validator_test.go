@@ -205,7 +205,7 @@ func TestValidateWildcardPermissions(t *testing.T) {
 			if tt.expectedCount > 0 && len(findings) > 0 {
 				for _, finding := range findings {
 					testutil.AssertEqual(t, "RBAC001", finding.RuleID, "unexpected rule ID")
-					testutil.AssertEqual(t, SeverityHigh, finding.Severity, "unexpected severity")
+					testutil.AssertEqual(t, SeverityCritical, finding.Severity, "unexpected severity")
 					if tt.expectedMsg != "" && !strings.Contains(finding.Message, tt.expectedMsg) {
 						t.Errorf("expected message to contain '%s', but got '%s'", tt.expectedMsg, finding.Message)
 					}
@@ -215,45 +215,62 @@ func TestValidateWildcardPermissions(t *testing.T) {
 	}
 }
 
-func TestValidateClusterAdminBinding(t *testing.T) {
+func TestValidateBuiltinRoleBindings(t *testing.T) {
 	tests := []struct {
-		name          string
-		object        runtime.Object
-		expectedCount int
+		name             string
+		object           runtime.Object
+		expectedCount    int
+		expectedSeverity Severity
 	}{
 		{
-			name: "clusterrolebinding to cluster-admin",
+			name: "clusterrolebinding to cluster-admin → CRITICAL",
 			object: &rbacv1.ClusterRoleBinding{
 				ObjectMeta: metav1.ObjectMeta{Name: "admin-binding"},
-				RoleRef: rbacv1.RoleRef{
-					Kind:     "ClusterRole",
-					Name:     "cluster-admin",
-					APIGroup: "rbac.authorization.k8s.io",
-				},
+				RoleRef:    rbacv1.RoleRef{Kind: "ClusterRole", Name: "cluster-admin", APIGroup: "rbac.authorization.k8s.io"},
 			},
-			expectedCount: 1,
+			expectedCount:    1,
+			expectedSeverity: SeverityCritical,
 		},
 		{
-			name: "rolebinding to cluster-admin",
+			name: "clusterrolebinding to admin → HIGH",
+			object: &rbacv1.ClusterRoleBinding{
+				ObjectMeta: metav1.ObjectMeta{Name: "admin-binding"},
+				RoleRef:    rbacv1.RoleRef{Kind: "ClusterRole", Name: "admin", APIGroup: "rbac.authorization.k8s.io"},
+			},
+			expectedCount:    1,
+			expectedSeverity: SeverityHigh,
+		},
+		{
+			name: "clusterrolebinding to edit → MEDIUM",
+			object: &rbacv1.ClusterRoleBinding{
+				ObjectMeta: metav1.ObjectMeta{Name: "edit-binding"},
+				RoleRef:    rbacv1.RoleRef{Kind: "ClusterRole", Name: "edit", APIGroup: "rbac.authorization.k8s.io"},
+			},
+			expectedCount:    1,
+			expectedSeverity: SeverityMedium,
+		},
+		{
+			name: "rolebinding to cluster-admin → CRITICAL",
 			object: &rbacv1.RoleBinding{
 				ObjectMeta: metav1.ObjectMeta{Name: "admin-binding", Namespace: "default"},
-				RoleRef: rbacv1.RoleRef{
-					Kind:     "ClusterRole",
-					Name:     "cluster-admin",
-					APIGroup: "rbac.authorization.k8s.io",
-				},
+				RoleRef:    rbacv1.RoleRef{Kind: "ClusterRole", Name: "cluster-admin", APIGroup: "rbac.authorization.k8s.io"},
 			},
-			expectedCount: 1,
+			expectedCount:    1,
+			expectedSeverity: SeverityCritical,
 		},
 		{
-			name: "binding to non-admin role",
+			name: "clusterrolebinding to view → no finding",
 			object: &rbacv1.ClusterRoleBinding{
-				ObjectMeta: metav1.ObjectMeta{Name: "normal-binding"},
-				RoleRef: rbacv1.RoleRef{
-					Kind:     "ClusterRole",
-					Name:     "view",
-					APIGroup: "rbac.authorization.k8s.io",
-				},
+				ObjectMeta: metav1.ObjectMeta{Name: "view-binding"},
+				RoleRef:    rbacv1.RoleRef{Kind: "ClusterRole", Name: "view", APIGroup: "rbac.authorization.k8s.io"},
+			},
+			expectedCount: 0,
+		},
+		{
+			name: "rolebinding to regular Role → no finding",
+			object: &rbacv1.RoleBinding{
+				ObjectMeta: metav1.ObjectMeta{Name: "role-binding", Namespace: "default"},
+				RoleRef:    rbacv1.RoleRef{Kind: "Role", Name: "admin", APIGroup: "rbac.authorization.k8s.io"},
 			},
 			expectedCount: 0,
 		},
@@ -261,12 +278,12 @@ func TestValidateClusterAdminBinding(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			findings := validateClusterAdminBinding(tt.object)
-			testutil.AssertEqual(t, tt.expectedCount, len(findings), "unexpected number of findings")
+			findings := validateBuiltinRoleBindings(tt.object)
+			testutil.AssertEqual(t, tt.expectedCount, len(findings), "finding count")
 
 			if tt.expectedCount > 0 && len(findings) > 0 {
-				testutil.AssertEqual(t, "RBAC002", findings[0].RuleID, "unexpected rule ID")
-				testutil.AssertEqual(t, SeverityHigh, findings[0].Severity, "unexpected severity")
+				testutil.AssertEqual(t, "RBAC002", findings[0].RuleID, "rule ID")
+				testutil.AssertEqual(t, tt.expectedSeverity, findings[0].Severity, "severity")
 			}
 		})
 	}
@@ -521,11 +538,19 @@ func TestCheckRulesForWildcards(t *testing.T) {
 }
 
 func TestSeverityConstants(t *testing.T) {
-	// Test that severity constants have expected values
+	testutil.AssertEqual(t, Severity("CRITICAL"), SeverityCritical, "SeverityCritical constant")
 	testutil.AssertEqual(t, Severity("HIGH"), SeverityHigh, "SeverityHigh constant")
 	testutil.AssertEqual(t, Severity("MEDIUM"), SeverityMedium, "SeverityMedium constant")
 	testutil.AssertEqual(t, Severity("LOW"), SeverityLow, "SeverityLow constant")
 	testutil.AssertEqual(t, Severity("INFO"), SeverityInfo, "SeverityInfo constant")
+
+	// Rank ordering: CRITICAL > HIGH > MEDIUM > LOW > INFO
+	if SeverityRank[SeverityCritical] <= SeverityRank[SeverityHigh] {
+		t.Error("expected CRITICAL rank > HIGH rank")
+	}
+	if SeverityRank[SeverityHigh] <= SeverityRank[SeverityMedium] {
+		t.Error("expected HIGH rank > MEDIUM rank")
+	}
 }
 
 func TestDefaultRules(t *testing.T) {
@@ -535,7 +560,7 @@ func TestDefaultRules(t *testing.T) {
 	expectedRules := map[string]string{
 		// Original rules
 		"RBAC001": "Avoid Wildcard Permissions",
-		"RBAC002": "Avoid Cluster-Admin Binding",
+		"RBAC002": "Avoid Overly Permissive Built-in Role Bindings",
 		"RBAC003": "Avoid Secrets Access",
 		"RBAC004": "Prefer Namespaced Roles",
 		// NIST SP 800-190 rules
@@ -576,6 +601,28 @@ func TestDefaultRules(t *testing.T) {
 		}
 		if !found {
 			t.Errorf("expected rule %s not found in default rules", ruleID)
+		}
+	}
+}
+
+func TestCatalogCompleteness(t *testing.T) {
+	// Every catalog entry must have a validate function registered.
+	for _, meta := range Catalog {
+		fn, ok := ruleValidateFuncs[meta.ID]
+		if !ok {
+			t.Errorf("catalog entry %s has no validate function in ruleValidateFuncs", meta.ID)
+			continue
+		}
+		if fn == nil {
+			t.Errorf("ruleValidateFuncs[%s] is nil", meta.ID)
+		}
+	}
+
+	// Every validate function must have a catalog entry.
+	catalogIDs := CatalogByID()
+	for id := range ruleValidateFuncs {
+		if _, ok := catalogIDs[id]; !ok {
+			t.Errorf("ruleValidateFuncs has %s but no matching catalog entry", id)
 		}
 	}
 }
