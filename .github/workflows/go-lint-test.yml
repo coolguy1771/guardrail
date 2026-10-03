@@ -62,7 +62,7 @@ jobs:
 
       - name: Check coverage threshold
         if: matrix.os == 'ubuntu-latest'
-        uses: vladopajic/go-test-coverage@d4177aaab9307eb783516275d495c01254da2fb9 # v2.16.0
+        uses: vladopajic/go-test-coverage@f484eec846448c97c777a26f8b58c5a69a327e12 # v2.20.0
         with:
           profile: coverage.out
           local-prefix: github.com/${{ github.repository }}
