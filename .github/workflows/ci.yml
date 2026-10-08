@@ -92,15 +92,15 @@ jobs:
 
       # Run CodeQL (unique to this job)
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@3599b3baa15b485a2e49ef411a7a4bb2452e7f93 # v3
+        uses: github/codeql-action/init@9f759ee644a3e7c15c1390abf49868036c00067b # v3
         with:
           languages: go
 
       - name: Autobuild
-        uses: github/codeql-action/autobuild@3599b3baa15b485a2e49ef411a7a4bb2452e7f93 # v3
+        uses: github/codeql-action/autobuild@9f759ee644a3e7c15c1390abf49868036c00067b # v3
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@3599b3baa15b485a2e49ef411a7a4bb2452e7f93 # v3
+        uses: github/codeql-action/analyze@9f759ee644a3e7c15c1390abf49868036c00067b # v3
         with:
           category: "/language:go"
 
